@@ -1,0 +1,2404 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#7776dd">
+  <title>SPU Study Buddy | หาเพื่อนติวในมอ</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #282642;
+      --muted: #77758f;
+      --paper: #f2f2ff;
+      --green: #625bd4;
+      --green-dark: #4945b2;
+      --lime: #c5c3ff;
+      --line: rgba(71, 68, 132, .12);
+      --shadow: 0 18px 55px rgba(62, 57, 133, .14);
+    }
+    * { box-sizing: border-box; }
+    body, html { width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--paper); color: var(--ink); font-family: Inter, "Noto Sans Thai", "Leelawadee UI", system-ui, sans-serif; }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    #canvas-container { position: fixed; inset: 0; z-index: 0; }
+    #canvas-container canvas { display: block; width: 100%; height: 100%; }
+    #app { position: relative; z-index: 1; width: 100%; height: 100%; padding: 20px 24px; display: grid; grid-template-rows: 64px 1fr; gap: 16px; pointer-events: none; }
+    .interactive { pointer-events: auto; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border: 1px solid rgba(255,255,255,.78); border-radius: 18px; background: rgba(250,250,255,.88); backdrop-filter: blur(16px); box-shadow: 0 8px 30px rgba(67,61,137,.1); }
+    .brand { display: flex; gap: 11px; align-items: center; font-weight: 850; letter-spacing: -.03em; }
+    .brand-mark { width: 38px; height: 38px; border-radius: 13px; display: grid; place-items: center; color: #fff; background: var(--green); font-size: 20px; }
+    .brand-name { font-size: 15px; line-height: 1.15; }
+    .brand-caption { display: block; color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .04em; margin-top: 3px; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .online-pill { display: flex; align-items: center; gap: 7px; padding: 8px 11px; border: 1px solid #d9d7fb; border-radius: 99px; color: #5550aa; background: #f0efff; font-size: 11px; font-weight: 750; }
+    .online-dot { width: 7px; height: 7px; background: #5fc6e7; border-radius: 50%; box-shadow: 0 0 0 4px rgba(95,198,231,.17); }
+    .primary-btn, .secondary-btn, .icon-btn { border: 0; border-radius: 12px; font-weight: 750; transition: transform .18s ease, background .18s ease; }
+    .primary-btn { padding: 11px 15px; color: #fff; background: linear-gradient(115deg, #655bd9, #4f83dc); box-shadow: 0 6px 16px rgba(92,83,202,.25); font-size: 12px; }
+    .primary-btn:hover { background: linear-gradient(115deg, #5149c1, #3d6ec5); transform: translateY(-1px); }
+    .secondary-btn { padding: 9px 12px; color: var(--green-dark); background: #eeedff; font-size: 11px; }
+    .secondary-btn:hover { background: #e2e1ff; }
+    .content { min-height: 0; display: grid; grid-template-columns: minmax(245px, 310px) minmax(0, 1fr) minmax(300px, 355px); grid-template-rows: max-content minmax(0, 1fr); gap: 16px; }
+    .content { transition: opacity .24s ease, transform .24s ease, visibility .24s ease; }
+    #app.map-focus .content { opacity: 0; visibility: hidden; pointer-events: none; transform: scale(.98); }
+    #app.map-focus .map-hint { opacity: 0; visibility: hidden; pointer-events: none; }
+    #app.map-focus .topbar { position: absolute; top: 12px; right: 12px; z-index: 5; width: auto; max-width: 100%; height: auto; padding: 0; border: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
+    #app.map-focus .brand, #app.map-focus .top-actions > :not(.map-focus-button) { display: none; }
+    #app.map-focus .map-focus-button { padding: 10px 13px; border: 1px solid rgba(255,255,255,.85); border-radius: 13px; background: rgba(250,250,255,.94); box-shadow: 0 5px 18px rgba(55,51,125,.2); }
+    .glass { border: 1px solid rgba(255,255,255,.8); background: rgba(250,251,248,.9); backdrop-filter: blur(15px); box-shadow: var(--shadow); border-radius: 20px; }
+    .welcome { grid-column: 1; grid-row: 1; align-self: start; padding: 20px; }
+    .eyebrow { color: var(--green); font-size: 10px; font-weight: 850; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { margin: 8px 0 7px; font-size: clamp(22px, 2vw, 28px); line-height: 1.2; letter-spacing: -.055em; }
+    .welcome p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+    .welcome-bottom { display: flex; align-items: center; justify-content: space-between; margin-top: 17px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .stat-label { color: var(--muted); font-size: 10px; }
+    .stat-value { margin-top: 2px; font-size: 17px; font-weight: 850; }
+    .avatar-stack { display: flex; padding-left: 8px; }
+    .avatar { width: 29px; height: 29px; margin-left: -8px; display: grid; place-items: center; border: 2px solid #fff; border-radius: 50%; background: #f4d7be; font-size: 14px; }
+    .avatar:nth-child(2) { background: #d9e9d5; }.avatar:nth-child(3) { background: #e6dafa; }.avatar:nth-child(4) { background: #fae5ad; }
+    .places { grid-column: 1; grid-row: 2; align-self: start; padding: 16px; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .section-title { margin: 0; font-size: 13px; font-weight: 850; }
+    .tiny-label { color: var(--muted); font-size: 10px; }
+    .place-list { display: grid; gap: 7px; margin-top: 12px; }
+    .place-button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 10px; text-align: left; border: 1px solid transparent; border-radius: 13px; color: var(--ink); background: transparent; }
+    .place-button:hover, .place-button.active { border-color: #dad8ff; background: #f0efff; }
+    .place-icon { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; border-radius: 11px; background: #eeedff; font-size: 17px; }
+    .place-name { display: block; font-size: 11px; font-weight: 800; }
+    .place-sub { display: block; color: var(--muted); margin-top: 2px; font-size: 9px; }
+    .place-count { margin-left: auto; color: var(--green); font-size: 10px; font-weight: 800; }
+    .safety-note { margin-top: 13px; padding: 10px; border-radius: 12px; background: #f0efff; color: #625e89; font-size: 10px; line-height: 1.55; }
+    .safety-note strong { color: #48457c; }
+    .explore-building-btn { display: none; width: 100%; margin-top: 10px; padding: 9px 11px; border: 1px solid #dcdafa; border-radius: 11px; color: #514b9a; background: #f0efff; font-size: 10px; font-weight: 800; }
+    .explore-building-btn.visible { display: block; }
+    .explore-building-btn:hover { background: #e5e3ff; }
+    .map-hint { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); padding: 8px 12px; border-radius: 99px; color: #49466f; background: rgba(250,250,255,.88); border: 1px solid rgba(255,255,255,.85); box-shadow: 0 5px 22px rgba(55,51,125,.12); font-size: 10px; white-space: nowrap; }
+    .building-shortcuts { position: absolute; z-index: 2; top: 10px; right: 16px; left: auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; width: min(440px, calc(100vw - 32px)); padding: 6px; transform: none; border: 1px solid rgba(166,207,223,.2); border-radius: 14px; background: rgba(14,30,44,.94); box-shadow: 0 12px 30px rgba(8,20,32,.26); backdrop-filter: blur(14px); }
+    .building-shortcuts button { min-height: 38px; padding: 0 5px; border: 1px solid rgba(150,198,215,.16); border-radius: 9px; color: #d7e8ee; background: rgba(230,245,250,.07); font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .building-shortcuts button:hover, .building-shortcuts button:focus-visible { color: #f6ffff; border-color: rgba(102,207,216,.58); background: rgba(70,153,167,.32); outline: none; }
+    .building-tour-icon { display: inline-grid; width: 18px; height: 18px; margin-right: 2px; place-items: center; border-radius: 6px; color: #92dce0; background: rgba(71,160,173,.22); font-size: 11px; vertical-align: middle; }
+    .building-shortcuts .map-reference-button { color: #102b3b; border-color: transparent; background: linear-gradient(115deg, #8ee0dc, #6db9d4); }
+    .map-reference-overlay { position: fixed; z-index: 8; inset: 0; display: none; place-items: center; padding: 18px; background: rgba(25, 29, 66, .72); backdrop-filter: blur(8px); pointer-events: auto; }
+    .map-reference-overlay.open { display: grid; }
+    .map-reference-dialog { position: relative; box-sizing: border-box; width: min(1600px, calc(100vw - 20px)); max-height: calc(100dvh - 24px); padding: 14px; border: 1px solid rgba(255,255,255,.95); border-radius: 20px; background: #fff; box-shadow: 0 28px 90px rgba(14, 18, 54, .38); }
+    .map-reference-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 2px 10px; }
+    .map-reference-dialog h2 { margin: 0; color: #302d78; font-size: 18px; }
+    .map-reference-dialog img { display: block; width: 100%; max-height: calc(100dvh - 82px); object-fit: contain; border-radius: 12px; background: #eef6ff; }
+    .map-reference-close { flex: 0 0 32px; width: 32px; height: 32px; border: 0; border-radius: 10px; color: #fff; background: #514bb4; font-size: 21px; }
+    .map-controls { position: absolute; right: 375px; bottom: 20px; display: flex; gap: 6px; }
+    .map-controls button { width: 42px; height: 42px; border: 1px solid rgba(174,211,224,.22); border-radius: 12px; color: #e2f0f4; background: rgba(14,30,44,.94); box-shadow: 0 8px 22px rgba(8,20,32,.24); font-size: 18px; }
+    .map-controls button.wide { width: auto; padding: 0 14px; font-size: 13px; font-weight: 850; }
+    .weather-control { position: relative; }
+    .weather-menu { position: absolute; right: 0; bottom: calc(100% + 8px); display: grid; gap: 5px; width: 126px; padding: 6px; border: 1px solid rgba(174,211,224,.2); border-radius: 14px; background: rgba(14,30,44,.97); box-shadow: 0 8px 24px rgba(8,20,32,.28); }
+    .weather-menu[hidden] { display: none; }
+    .map-controls .weather-menu button { width: 100%; height: 40px; padding: 0 11px; text-align: left; border: 0; box-shadow: none; color: #d7e8ee; background: transparent; font-size: 13px; }
+    .map-controls .weather-menu button[aria-pressed="true"] { color: #9ce0df; background: rgba(82,163,175,.2); }
+    .building-quick-card { position: absolute; z-index: 3; left: 50%; bottom: 68px; width: min(420px, calc(100vw - 32px)); padding: 15px; transform: translateX(-50%); border: 1px solid rgba(174,211,224,.22); border-radius: 17px; color: #eaf3f6; background: rgba(14,30,44,.96); box-shadow: 0 16px 42px rgba(8,20,32,.34); backdrop-filter: blur(18px); }
+    .building-quick-card[hidden] { display: none; }
+    .floor-explode-panel { position: absolute; z-index: 4; right: 18px; top: 98px; width: min(330px, calc(100vw - 36px)); padding: 14px; border: 1px solid rgba(174,211,224,.22); border-radius: 18px; color: #eaf3f6; background: rgba(14,30,44,.96); box-shadow: 0 16px 44px rgba(8,20,32,.34); backdrop-filter: blur(16px); pointer-events: auto; }
+    .floor-explode-panel[hidden] { display: none; }
+    .floor-explode-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+    .floor-explode-kicker { color: #8ac9d2; font-size: 9px; font-weight: 850; letter-spacing: .12em; }
+    .floor-explode-heading h2 { margin: 3px 0 2px; color: #f2f7fa; font-size: 15px; }
+    .floor-explode-heading p { margin: 0; color: #a9bbc4; font-size: 10px; }
+    .floor-explode-close { flex: 0 0 28px; width: 28px; height: 28px; border: 1px solid rgba(174,211,224,.16); border-radius: 9px; color: #d6e6eb; background: rgba(220,242,248,.09); font-size: 18px; }
+    .floor-chip-list { display: flex; gap: 6px; overflow-x: auto; padding: 12px 0 4px; scrollbar-width: none; }
+    .floor-chip-list::-webkit-scrollbar { display: none; }
+    .floor-chip { flex: 0 0 auto; min-width: 48px; padding: 7px 8px; border: 1px solid rgba(174,211,224,.2); border-radius: 10px; color: #d6e6eb; background: rgba(220,242,248,.07); font-size: 10px; font-weight: 800; white-space: nowrap; }
+    .floor-chip.active { border-color: #78ccd2; color: #102b3b; background: #8ee0dc; box-shadow: 0 4px 12px rgba(75,175,184,.22); }
+    .floor-explode-status { display: flex; align-items: center; gap: 7px; margin: 5px 0 11px; color: #b4c7cf; font-size: 10px; }
+    .floor-explode-status span { width: 7px; height: 7px; border-radius: 50%; background: #56c7e8; box-shadow: 0 0 0 4px rgba(86,199,232,.14); }
+    .floor-explode-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .floor-explode-actions button { min-height: 35px; border: 1px solid rgba(174,211,224,.2); border-radius: 10px; color: #d6e6eb; background: rgba(220,242,248,.07); font-size: 10px; font-weight: 800; }
+    .floor-explode-actions button.primary { border-color: transparent; color: #102b3b; background: linear-gradient(115deg, #8ee0dc, #6db9d4); }
+    .quick-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .quick-card-head h2 { margin: 0; color: #f2f7fa; font-size: 14px; }
+    .quick-card-head p { margin: 4px 0 0; color: #a9bbc4; font-size: 10px; line-height: 1.5; }
+    .quick-card-close { flex: 0 0 28px; width: 28px; height: 28px; border: 1px solid rgba(174,211,224,.16); border-radius: 9px; color: #d6e6eb; background: rgba(220,242,248,.09); font-size: 17px; }
+    .quick-card-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .quick-card-actions button { flex: 1; min-height: 36px; border: 1px solid rgba(174,211,224,.22); border-radius: 10px; color: #d9e9ed; background: rgba(220,242,248,.08); font-size: 10px; font-weight: 800; }
+    .quick-card-actions button:last-child { border-color: transparent; color: #102b3b; background: linear-gradient(115deg, #8ee0dc, #6db9d4); }
+    .groups { grid-column: 3; grid-row: 1 / 3; min-height: 0; display: flex; flex-direction: column; padding: 17px; }
+    .groups-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .groups-head h2 { margin: 0; font-size: 16px; letter-spacing: -.035em; }
+    .groups-head p { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
+    .count-badge { min-width: 29px; padding: 6px 8px; border-radius: 9px; text-align: center; color: var(--green); background: #eeedff; font-size: 11px; font-weight: 850; }
+    .filters { display: flex; gap: 6px; overflow-x: auto; padding: 14px 0 11px; scrollbar-width: none; }
+    .filters::-webkit-scrollbar { display: none; }
+    .filter-btn { flex: 0 0 auto; border: 1px solid #e4e8e2; border-radius: 99px; padding: 7px 10px; color: #64716a; background: transparent; font-size: 10px; font-weight: 700; }
+    .filter-btn.active { color: #fff; border-color: var(--green); background: linear-gradient(115deg, #655bd9, #4f83dc); }
+    .group-list { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 9px; padding-right: 2px; scrollbar-width: thin; scrollbar-color: #d9e0d7 transparent; }
+    .group-card { padding: 12px; border: 1px solid #e9ece7; border-radius: 15px; background: rgba(255,255,255,.82); }
+    .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 7px; }
+    .subject-tag { display: inline-flex; padding: 4px 7px; border-radius: 7px; color: #514b9a; background: #f0efff; font-size: 9px; font-weight: 800; }
+    .spots { color: #a16d2f; font-size: 9px; font-weight: 750; white-space: nowrap; }
+    .group-card h3 { margin: 8px 0 7px; font-size: 12px; line-height: 1.4; }
+    .group-meta { display: grid; gap: 5px; color: #6d7872; font-size: 10px; }
+    .group-meta span { display: flex; align-items: center; gap: 6px; }
+    .card-bottom { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 11px; padding-top: 9px; border-top: 1px solid #eef0ec; }
+    .host { color: #6d7872; font-size: 9px; }
+    .join-btn { border: 0; border-radius: 9px; padding: 7px 10px; color: #fff; background: linear-gradient(115deg, #655bd9, #4f83dc); font-size: 10px; font-weight: 800; }
+    .join-btn:hover { background: var(--green-dark); }
+    .join-btn.joined { color: #514b9a; background: #eeedff; }
+    .join-btn:disabled { color: #89928c; background: #edf0eb; cursor: not-allowed; }
+    .card-actions { display: flex; gap: 5px; }
+    .route-btn { border: 1px solid #dddafa; border-radius: 9px; padding: 6px 8px; color: #5e58ba; background: #f6f5ff; font-size: 9px; font-weight: 800; white-space: nowrap; }
+    .route-btn:hover { background: #e9e7ff; }
+    .empty-state { padding: 24px 12px; text-align: center; color: var(--muted); font-size: 11px; line-height: 1.7; }
+    .groups-footer { padding-top: 11px; }
+    .groups-footer .primary-btn { width: 100%; }
+    #toast { position: fixed; z-index: 10; left: 50%; bottom: 22px; transform: translate(-50%, 12px); opacity: 0; pointer-events: none; padding: 11px 15px; border-radius: 12px; color: #fff; background: #243b33; box-shadow: 0 10px 28px rgba(22,40,32,.25); font-size: 11px; transition: .2s ease; }
+    #toast.visible { transform: translate(-50%, 0); opacity: 1; }
+    .modal-backdrop { position: fixed; z-index: 5; inset: 0; display: none; place-items: center; padding: 18px; background: rgba(25,36,31,.36); backdrop-filter: blur(4px); pointer-events: auto; }
+    .modal-backdrop.open { display: grid; }
+    .modal { width: min(470px, 100%); max-height: min(92vh, 760px); overflow-y: auto; padding: 21px; border: 1px solid rgba(255,255,255,.9); border-radius: 20px; background: #fbfcf9; box-shadow: 0 28px 90px rgba(18,38,29,.25); }
+    .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .modal-head h2 { margin: 0; font-size: 19px; letter-spacing: -.04em; }
+    .modal-head p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
+    .close-btn { width: 31px; height: 31px; border: 0; border-radius: 10px; color: #617069; background: #eef1ec; font-size: 17px; }
+    .building-overlay { position: fixed; z-index: 6; inset: 0; display: none; place-items: center; padding: 20px; background: rgba(28, 28, 65, .48); backdrop-filter: blur(8px); pointer-events: auto; }
+    .building-overlay.open { display: grid; }
+    .building-explorer { width: min(900px, 100%); max-height: min(92vh, 760px); overflow: auto; padding: 22px; border: 1px solid rgba(255,255,255,.9); border-radius: 24px; background: linear-gradient(145deg, #fbfbff, #f0f2ff); box-shadow: 0 30px 100px rgba(24, 24, 68, .3); }
+    .explorer-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
+    .explorer-kicker { color: #6a61d3; font-size: 10px; font-weight: 850; letter-spacing: .13em; }
+    .explorer-head h2 { margin: 5px 0 4px; font-size: clamp(20px, 3vw, 27px); letter-spacing: -.05em; }
+    .explorer-head p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .explorer-body { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(230px, .8fr); gap: 15px; }
+    .interior-panel, .room-info { padding: 15px; border: 1px solid #e3e4f6; border-radius: 18px; background: rgba(255,255,255,.8); }
+    .interior-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .interior-toolbar strong { font-size: 12px; }
+    .floor-tabs { display: flex; max-width: 60%; gap: 5px; overflow-x: auto; }
+    .floor-tab { min-width: 37px; padding: 7px 9px; border: 1px solid #e7e7f2; border-radius: 9px; color: #77758f; background: #fff; font-size: 10px; font-weight: 800; }
+    .floor-tab.active { border-color: #655bd9; color: #fff; background: #655bd9; }
+    .floor-plan { position: relative; min-height: 300px; margin-top: 12px; padding: 14px; overflow: hidden; border: 7px solid #d7d9f1; border-radius: 15px; background-color: #f5f3ec; background-image: linear-gradient(90deg, transparent 49%, rgba(99,91,217,.1) 49%, rgba(99,91,217,.1) 51%, transparent 51%), linear-gradient(transparent 49%, rgba(99,91,217,.1) 49%, rgba(99,91,217,.1) 51%, transparent 51%); background-size: 100% 100%; }
+    .floor-plan::before { position: absolute; inset: 7px; border: 1px dashed rgba(92,88,145,.22); border-radius: 8px; content: ""; pointer-events: none; }
+    .floor-plan-label { position: absolute; right: 15px; bottom: 12px; color: #9997ae; font-size: 9px; font-weight: 750; letter-spacing: .1em; pointer-events: none; }
+    .room-grid { position: relative; z-index: 1; min-height: 255px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 10px; }
+    .room-button { display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; min-height: 112px; padding: 12px; border: 2px solid rgba(255,255,255,.95); border-radius: 13px; color: #34324d; background: rgba(220,231,255,.92); box-shadow: 0 4px 12px rgba(73,71,125,.09); text-align: left; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+    .room-button:nth-child(2) { background: rgba(255,231,215,.94); }
+    .room-button:nth-child(3) { background: rgba(222,244,229,.94); }
+    .room-button:nth-child(4) { background: rgba(241,228,255,.94); }
+    .room-button:hover, .room-button.selected { transform: translateY(-2px); border-color: #675ed8; box-shadow: 0 7px 18px rgba(73,71,160,.17); }
+    .room-icon { font-size: 22px; }
+    .room-name { font-size: 11px; font-weight: 850; }
+    .room-meta { color: #77758f; font-size: 9px; }
+    .room-info { display: flex; flex-direction: column; justify-content: space-between; }
+    .room-info-top { display: grid; gap: 12px; }
+    .room-info-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; background: #f0efff; font-size: 24px; }
+    .room-info h3 { margin: 0; font-size: 16px; }
+    .room-info p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.7; }
+    .room-stats { display: flex; gap: 8px; }
+    .room-stat { flex: 1; padding: 10px; border-radius: 11px; background: #f4f3ff; }
+    .room-stat strong { display: block; color: #514b9a; font-size: 14px; }
+    .room-stat span { color: #77758f; font-size: 9px; }
+    .room-group-preview { padding: 10px; border: 1px solid #e9e8f5; border-radius: 11px; background: #fff; }
+    .room-group-preview strong { display: block; overflow: hidden; color: #49466f; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+    .room-group-preview span { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
+    .room-actions { display: grid; gap: 7px; margin-top: 14px; }
+    .room-actions .primary-btn, .room-actions .secondary-btn { width: 100%; }
+    .explorer-note { margin: 12px 2px 0; color: #88869e; font-size: 9px; line-height: 1.5; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .field { display: grid; gap: 5px; color: #58665e; font-size: 10px; font-weight: 750; }
+    .field.full { grid-column: 1 / -1; }
+    .field input, .field select, .field textarea { width: 100%; min-width: 0; border: 1px solid #dfe5dc; border-radius: 10px; outline: none; padding: 10px; color: var(--ink); background: #fff; font-size: 11px; }
+    .field input:focus, .field select:focus, .field textarea:focus { border-color: #73a38a; box-shadow: 0 0 0 3px rgba(25,107,87,.1); }
+    .field textarea { min-height: 68px; resize: vertical; }
+    .form-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 14px; }
+    .privacy-copy { max-width: 220px; color: #818a84; font-size: 9px; line-height: 1.5; }
+    .no-webgl { position: fixed; inset: 0; display: none; place-items: center; padding: 24px; color: var(--ink); background: var(--paper); text-align: center; }
+    #app { display: block; padding: 0; }
+    #app > .topbar, .map-hint { display: none !important; }
+    #canvas-container canvas { filter: saturate(1.24) contrast(1.12) brightness(.98); }
+    .building-shortcuts { top: 10px; }
+    .building-shortcuts button { min-height: 42px; padding: 0 12px; font-size: 13px; }
+    .map-controls { right: 20px; bottom: 20px; }
+    #toggle-evening, #zoom-in, #zoom-out { display: none; }
+    #app > .content { position: absolute; z-index: 3; inset: 70px 14px 72px; display: grid !important; grid-template-columns: minmax(225px, 265px) minmax(0, 1fr) minmax(290px, 340px); grid-template-rows: minmax(0, 1fr); gap: 12px; pointer-events: none; }
+    #app > .content .welcome { display: none; }
+    #app > .content .places { grid-column: 1; grid-row: 1; align-self: start; max-height: 100%; overflow: auto; }
+    #app > .content .groups { grid-column: 3; grid-row: 1; max-height: 100%; }
+    #app > .content .places, #app > .content .groups { border: 1px solid rgba(157, 205, 222, .2); color: #eaf3f6; background: linear-gradient(155deg, rgba(12, 29, 43, .96), rgba(18, 39, 54, .93)); box-shadow: 0 18px 44px rgba(5, 17, 28, .3), inset 0 1px rgba(255,255,255,.045); backdrop-filter: blur(18px); }
+    #app > .content .section-title, #app > .content .groups-head h2 { color: #f1f7f9; }
+    #app > .content .tiny-label, #app > .content .groups-head p { color: #a7bdc6; }
+    #app > .content .place-button { border-color: rgba(169, 207, 219, .08); color: #e0edf1; background: rgba(227, 244, 249, .035); }
+    #app > .content .place-button:hover, #app > .content .place-button.active { border-color: rgba(67, 203, 204, .42); background: linear-gradient(110deg, rgba(29, 111, 123, .46), rgba(39, 100, 133, .32)); }
+    #app > .content .place-icon { background: rgba(72, 168, 177, .18); }
+    #app > .content .place-name { color: #f1f7f9; }
+    #app > .content .place-sub { color: #9fb5bf; }
+    #app > .content .place-count { color: #76d4d3; }
+    #app > .content .safety-note { border: 1px solid rgba(128, 204, 200, .14); color: #bfd5d9; background: rgba(57, 138, 134, .12); }
+    #app > .content .safety-note strong { color: #a2e5db; }
+    #app > .content .count-badge { color: #9ce1dc; background: rgba(57, 138, 151, .25); }
+    #app > .content .filter-btn { border-color: rgba(169,207,219,.16); color: #bdd0d7; background: rgba(220,242,248,.055); }
+    #app > .content .filter-btn.active { border-color: transparent; color: #092d3c; background: linear-gradient(110deg, #83dfd5, #68bddd); }
+    #app > .content .group-card { border-color: rgba(169,207,219,.14); background: rgba(227,244,249,.065); }
+    #app > .content .subject-tag { color: #a7e2df; background: rgba(61,151,161,.22); }
+    #app > .content .spots { color: #f4c77b; }
+    #app > .content .group-card h3 { color: #eef6f8; }
+    #app > .content .group-meta, #app > .content .host { color: #afc4cc; }
+    #app > .content .card-bottom { border-color: rgba(169,207,219,.12); }
+    #app > .content .route-btn { border-color: rgba(105,199,207,.28); color: #a9e5e5; background: rgba(44,122,139,.18); }
+    #app > .content .route-btn:hover { background: rgba(44,155,166,.3); }
+    #app > .content .join-btn { color: #092d3c; background: linear-gradient(110deg, #83dfd5, #68bddd); }
+    #app > .content .join-btn.joined { color: #b7ebdf; background: rgba(58,145,122,.25); }
+    #app > .content .join-btn:disabled { color: #9aabb1; background: rgba(220,242,248,.1); }
+    #app > .content .empty-state { color: #b3c5cc; }
+    #app > .content .groups-footer { margin-top: auto; }
+    #app > .content .groups-footer .primary-btn { color: #082c3b; background: linear-gradient(110deg, #83dfd5, #68bddd); box-shadow: 0 7px 20px rgba(35,152,168,.2); }
+    #app > .content .groups-footer .primary-btn:hover { background: linear-gradient(110deg, #a0eee2, #82d0eb); }
+    @media (max-width: 1050px) {
+      #app { padding: 0; gap: 10px; }
+      .content { grid-template-columns: 230px minmax(0, 1fr) 310px; gap: 10px; }
+      #app > .content { grid-template-columns: minmax(190px, 220px) minmax(0, 1fr) minmax(250px, 285px); gap: 8px; }
+      .welcome { padding: 15px; }
+      .places { padding: 12px; }
+      .groups { padding: 13px; }
+      .map-controls { right: 20px; }
+    }
+    @media (max-width: 760px) {
+      body, html { height: 100%; overflow: hidden; }
+      #app { height: 100dvh; min-height: 0; padding: 0; grid-template-rows: 55px 1fr; gap: 9px; }
+      .topbar { padding: 0 11px; border-radius: 15px; }
+      .brand-mark { width: 33px; height: 33px; }
+      .brand-name { font-size: 12px; }.brand-caption { font-size: 8px; }
+      .online-pill { display: none; }
+      .top-actions { gap: 5px; }
+      .map-focus-button { padding: 8px 7px; font-size: 9px; }
+      .primary-btn { padding: 10px 11px; font-size: 10px; }
+      .content { position: absolute; left: 9px; right: 9px; bottom: 62px; max-height: 42dvh; grid-template-columns: 1fr; grid-template-rows: auto auto auto; gap: 8px; overflow-x: hidden; overflow-y: auto; padding: 8px; border: 1px solid rgba(255,255,255,.9); border-radius: 18px; background: rgba(250,251,255,.88); backdrop-filter: blur(14px); box-shadow: 0 12px 32px rgba(39,44,92,.2); }
+      .welcome { display: none; }
+      .welcome h1 { margin: 4px 0; font-size: 19px; }
+      .welcome p { font-size: 10px; line-height: 1.45; }
+      .welcome-bottom { display: none; }
+      .places { grid-column: 1; grid-row: 2; padding: 10px; border-radius: 15px; }
+      .places .section-head { margin: 0 2px; }
+      .place-list { display: flex; gap: 6px; margin-top: 8px; overflow-x: auto; }
+      .place-button { flex: 0 0 auto; width: auto; gap: 6px; padding: 6px 8px; border: 1px solid #e8ece5; background: rgba(255,255,255,.6); }
+      .place-icon { width: 28px; height: 28px; flex-basis: 28px; font-size: 14px; }
+      .place-name { font-size: 9px; }.place-sub,.place-count,.safety-note { display: none; }
+      .explore-building-btn { width: auto; margin-top: 8px; padding: 7px 10px; }
+      .groups { grid-column: 1; grid-row: 3; min-height: 0; padding: 12px; border-radius: 16px; }
+      .groups-head h2 { font-size: 14px; }
+      .filters { padding: 10px 0 8px; }
+      .group-list { flex: 0 0 auto; overflow: visible; gap: 7px; }
+      .group-card { padding: 10px; }
+      .building-shortcuts { top: 8px; right: 8px; left: 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; width: auto; padding: 5px; border-radius: 12px; }
+      .building-shortcuts button { min-height: 34px; padding: 0 3px; font-size: 10px; }
+      .building-tour-icon { width: 16px; height: 16px; font-size: 10px; }
+      .map-reference-overlay { padding: 0; }
+      .map-reference-dialog { display: flex; flex-direction: column; width: 100vw; height: 100dvh; max-height: none; padding: 6px; border: 0; border-radius: 0; }
+      .map-reference-header { flex: 0 0 auto; margin: 0 2px 6px; }
+      .map-reference-dialog h2 { font-size: 15px; }
+      .map-reference-dialog img { flex: 1 1 auto; width: 100%; height: 0; min-height: 0; max-height: none; object-fit: contain; }
+      .map-controls { display: flex; left: auto; right: 10px; bottom: 12px; gap: 6px; }
+      .map-controls button { width: 42px; height: 42px; font-size: 19px; }
+      .map-controls button.wide { padding: 0 12px; font-size: 13px; }
+      #app > .content { inset: auto 8px 62px; height: min(44dvh, 390px); max-height: 44dvh; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; gap: 8px; overflow-x: hidden; overflow-y: auto; padding: 8px; border: 1px solid rgba(157,205,222,.2); border-radius: 17px; background: rgba(12,29,43,.9); box-shadow: 0 14px 36px rgba(5,17,28,.34); backdrop-filter: blur(16px); }
+      #app > .content .places { grid-column: 1; grid-row: 1; max-height: none; }
+      #app > .content .groups { grid-column: 1; grid-row: 2; max-height: none; }
+      #app.map-focus .content { display: none !important; }
+      #app.map-focus .topbar { top: 9px; right: 9px; }
+      .building-quick-card { bottom: 60px; }
+      .floor-explode-panel { top: 72px; right: 9px; width: min(290px, calc(100vw - 18px)); padding: 11px; }
+      .floor-explode-heading h2 { font-size: 13px; }
+      .building-overlay { padding: 9px; }
+      .building-explorer { max-height: 94vh; padding: 15px; border-radius: 18px; }
+      .explorer-body { grid-template-columns: 1fr; }
+      .floor-plan { min-height: 250px; padding: 10px; }
+      .room-grid { min-height: 210px; gap: 7px; }
+      .room-button { min-height: 96px; padding: 9px; }
+      .room-info { gap: 12px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; } }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+  <div id="canvas-container" aria-hidden="true"></div>
+  <main id="app">
+    <header class="topbar interactive">
+      <div class="brand">
+        <div class="brand-mark">✳</div>
+        <div><div class="brand-name">SPU Study Buddy</div><span class="brand-caption">STUDY TOGETHER · GROW TOGETHER</span></div>
+      </div>
+      <div class="top-actions">
+        <div class="online-pill"><span class="online-dot"></span><span id="active-count">กำลังหากลุ่ม...</span></div>
+        <button class="secondary-btn map-focus-button" id="toggle-map-focus" type="button" aria-controls="app-content" aria-expanded="true">🗺️ <span id="map-focus-label">ซ่อน UI</span></button>
+        <button class="primary-btn" id="open-create" type="button">＋ สร้างกลุ่มติว</button>
+      </div>
+    </header>
+    <section class="content" id="app-content">
+      <section class="glass welcome interactive">
+        <div class="eyebrow">YOUR CAMPUS, YOUR CREW</div>
+        <h1>ติวด้วยกัน<br>เก่งไปด้วยกัน 🌱</h1>
+        <p>เจอเพื่อนวิชาเดียวกัน แล้วนัดอ่านหนังสือในบรรยากาศสบาย ๆ ภายในม.ศรีปทุม</p>
+        <div class="welcome-bottom">
+          <div><div class="stat-label">กลุ่มที่เปิดรับตอนนี้</div><div class="stat-value" id="open-groups-count">— กลุ่ม</div></div>
+          <div class="avatar-stack" aria-label="นักศึกษาที่กำลังใช้งาน"><span class="avatar">👩🏻</span><span class="avatar">👨🏽</span><span class="avatar">👩🏾</span><span class="avatar">＋</span></div>
+        </div>
+      </section>
+      <section class="glass places interactive">
+        <div class="section-head"><h2 class="section-title">เลือกมุมในมอ</h2><span class="tiny-label">แตะเพื่อดูจุดนัด</span></div>
+        <div class="place-list" id="place-list">
+          <button class="place-button active" data-place="all" type="button"><span class="place-icon">🗺️</span><span><span class="place-name">ทั้งแคมปัส</span><span class="place-sub">ดูทุกจุดนัดพบ</span></span><span class="place-count" id="place-count-all">0</span></button>
+          <button class="place-button" data-place="library" type="button"><span class="place-icon">📚</span><span><span class="place-name">อาคาร 5 · ห้องสมุด SPU</span><span class="place-sub">อาคารสยามบรมราชกุมารี · เงียบ มีสมาธิ</span></span><span class="place-count" id="place-count-library">0</span></button>
+          <button class="place-button" data-place="cowork" type="button"><span class="place-icon">💡</span><span><span class="place-name">โคเวิร์กกิง</span><span class="place-sub">คุยงานได้</span></span><span class="place-count" id="place-count-cowork">0</span></button>
+          <button class="place-button" data-place="cafe" type="button"><span class="place-icon">☕</span><span><span class="place-name">คาเฟ่คณะ</span><span class="place-sub">ติวชิล ๆ</span></span><span class="place-count" id="place-count-cafe">0</span></button>
+          <button class="place-button" data-place="plaza" type="button"><span class="place-icon">🌿</span><span><span class="place-name">ลานกิจกรรม</span><span class="place-sub">นัดเจอกันง่าย</span></span><span class="place-count" id="place-count-plaza">0</span></button>
+        </div>
+        <button class="explore-building-btn" id="enter-building" type="button">🚪 สำรวจภายในอาคาร</button>
+        <button class="explore-building-btn" id="route-to-place" type="button">🧭 นำทางไปจุดนี้</button>
+        <div class="safety-note"><strong>นัดอย่างสบายใจ</strong><br>นัดในพื้นที่สาธารณะของมหาวิทยาลัย และหลีกเลี่ยงการแชร์ข้อมูลส่วนตัว</div>
+      </section>
+      <aside class="glass groups interactive">
+        <div class="groups-head"><div><h2>กลุ่มติวที่กำลังเปิดรับ</h2><p>เลือกกลุ่มที่ใช่ แล้วเจอกันในมอ</p></div><span class="count-badge" id="visible-count">0</span></div>
+        <div class="filters" id="filters">
+          <button class="filter-btn active" data-filter="all" type="button">ทั้งหมด</button>
+          <button class="filter-btn" data-filter="ธุรกิจ" type="button">ธุรกิจ</button>
+          <button class="filter-btn" data-filter="เทคโนโลยี" type="button">เทคโนโลยี</button>
+          <button class="filter-btn" data-filter="ภาษา" type="button">ภาษา</button>
+          <button class="filter-btn" data-filter="สอบ" type="button">เตรียมสอบ</button>
+        </div>
+        <div class="group-list" id="group-list"></div>
+        <div class="groups-footer"><button class="primary-btn" id="open-create-bottom" type="button">＋ เปิดกลุ่มติวของคุณ</button></div>
+      </aside>
+    </section>
+    <div class="map-hint">อาคาร 3D อ้างอิงภาพผัง · ลากเพื่อหมุน · แตะอาคารหรือเลือกชมจากปุ่มลัด</div>
+    <nav class="building-shortcuts interactive" aria-label="เลือกชมอาคาร">
+      <button type="button" data-building-tour="5" aria-label="ชมอาคาร 5"><span class="building-tour-icon" aria-hidden="true">👁</span>อาคาร 5</button>
+      <button type="button" data-building-tour="9" aria-label="ชมอาคาร 9"><span class="building-tour-icon" aria-hidden="true">👁</span>อาคาร 9</button>
+      <button type="button" data-building-tour="11" aria-label="ชมอาคาร 11"><span class="building-tour-icon" aria-hidden="true">👁</span>อาคาร 11</button>
+      <button class="map-reference-button" id="open-campus-map" type="button">🗺️ ผัง</button>
+    </nav>
+    <div class="map-controls interactive" aria-label="ควบคุมมุมมอง"><button class="wide" id="toggle-evening" type="button">🌙 กลางคืน</button><div class="weather-control"><button class="wide" id="toggle-weather-menu" type="button" aria-expanded="false" aria-controls="weather-menu">☀️ อากาศ</button><div class="weather-menu" id="weather-menu" role="group" aria-label="เลือกสภาพอากาศ" hidden><button type="button" data-weather="sunny" aria-pressed="true">☀️ แดดออก</button><button type="button" data-weather="rain" aria-pressed="false">🌧️ ฝนตก</button><button type="button" data-weather="snow" aria-pressed="false">❄️ หิมะตก</button></div></div><button id="zoom-in" aria-label="ซูมเข้า" type="button">＋</button><button id="zoom-out" aria-label="ซูมออก" type="button">−</button><button class="wide" id="reset-camera" aria-label="แสดงภาพรวมแผนที่" title="แสดงภาพรวมแผนที่" type="button">🌐</button></div>
+    <section class="building-quick-card interactive" id="building-quick-card" aria-live="polite" hidden>
+      <div class="quick-card-head">
+        <div><h2 id="quick-building-title"></h2><p id="quick-building-description"></p></div>
+        <button class="quick-card-close" id="close-quick-building" type="button" aria-label="ปิด">×</button>
+      </div>
+      <div class="quick-card-actions">
+        <button id="quick-building-groups" type="button">🧭 ดูกลุ่มและนำทาง</button>
+        <button id="quick-building-create" type="button">＋ นัดติวใกล้ที่นี่</button>
+      </div>
+    </section>
+    <section class="floor-explode-panel" id="floor-explode-panel" aria-live="polite" hidden>
+      <div class="floor-explode-heading">
+        <div><div class="floor-explode-kicker">3D BUILDING EXPLORER</div><h2 id="floor-explode-title">อาคาร</h2><p>แตะเลือกชั้นเพื่อโฟกัสดูรายละเอียด</p></div>
+        <button class="floor-explode-close" id="floor-explode-close" type="button" aria-label="ปิดมุมมองแยกชั้น">×</button>
+      </div>
+      <div class="floor-chip-list" id="floor-chip-list" aria-label="เลือกชั้น"></div>
+      <div class="floor-explode-status"><span></span><div id="floor-explode-status-text">แยกชั้นอาคารแบบ 3 มิติ</div></div>
+      <div class="floor-explode-actions">
+        <button id="floor-explode-toggle" type="button">▤ รวมชั้น</button>
+        <button class="primary" id="floor-explore-interior" type="button">สำรวจห้องด้านใน ↗</button>
+      </div>
+    </section>
+  </main>
+  <div id="create-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <section class="modal interactive">
+      <div class="modal-head"><div><h2 id="modal-title">ชวนเพื่อนมาติวกัน ✨</h2><p>สร้างนัดติวใหม่ในพื้นที่ของมหาวิทยาลัย</p></div><button class="close-btn" id="close-modal" type="button" aria-label="ปิด">×</button></div>
+      <form id="create-form">
+        <div class="form-grid">
+          <label class="field full">ชื่อกลุ่ม / หัวข้อที่อยากติว<input name="title" maxlength="70" placeholder="เช่น ติวบัญชีบทปรับปรุงก่อนสอบ" required></label>
+          <label class="field">วิชา / หมวดหมู่<select name="category" required><option value="ธุรกิจ">ธุรกิจ</option><option value="เทคโนโลยี">เทคโนโลยี</option><option value="ภาษา">ภาษา</option><option value="สอบ">เตรียมสอบ</option><option value="ทั่วไป">ทั่วไป / โปรเจกต์</option></select></label>
+          <label class="field">จุดนัดในมหาวิทยาลัย<select name="place" required><option value="library">ห้องสมุด</option><option value="cowork">โคเวิร์กกิง</option><option value="cafe">คาเฟ่คณะ</option><option value="plaza">ลานกิจกรรม</option></select></label>
+          <label class="field">วันนัด<input name="date" type="date" required></label>
+          <label class="field">เวลา<input name="time" type="time" value="16:00" required></label>
+          <label class="field">จำนวนคนสูงสุด<select name="capacity"><option value="3">3 คน</option><option value="4" selected>4 คน</option><option value="5">5 คน</option><option value="6">6 คน</option><option value="8">8 คน</option></select></label>
+          <label class="field">ชื่อที่ใช้แสดง<input name="host" maxlength="30" placeholder="เช่น แพรว ปี 2" required></label>
+          <label class="field full">รายละเอียดเพิ่มเติม<textarea name="description" maxlength="140" placeholder="เตรียมอะไรมา หรืออยากได้เพื่อนแบบไหน (ไม่บังคับ)"></textarea></label>
+        </div>
+        <div class="form-foot"><span class="privacy-copy">ข้อมูลนี้เก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น ยังไม่มีระบบบัญชีหรือแชตจริง</span><button class="primary-btn" type="submit">สร้างกลุ่มติว</button></div>
+      </form>
+    </section>
+  </div>
+  <div id="building-modal" class="building-overlay" role="dialog" aria-modal="true" aria-labelledby="building-title">
+    <section class="building-explorer">
+      <div class="explorer-head">
+        <div><div class="explorer-kicker">CAMPUS EXPLORER · INTERACTIVE</div><h2 id="building-title">สำรวจอาคาร</h2><p id="building-subtitle">เลือกชั้นและแตะห้องที่อยากไป</p></div>
+        <button class="close-btn" id="close-building" type="button" aria-label="ออกจากอาคาร">×</button>
+      </div>
+      <div class="explorer-body">
+        <section class="interior-panel" aria-label="แผนผังชั้นและห้อง">
+          <div class="interior-toolbar"><strong id="floor-label">ชั้น 1 · เลือกมุมที่ชอบ</strong><div class="floor-tabs" id="floor-tabs" aria-label="เลือกชั้น"></div></div>
+          <div class="floor-plan"><div class="room-grid" id="room-grid"></div><span class="floor-plan-label">SIMULATED FLOOR PLAN</span></div>
+          <p class="explorer-note">แปลนและจำนวนที่นั่งเป็นข้อมูลจำลองสำหรับทดลองประสบการณ์ใช้งาน · ผังอาคารจริงอาจแตกต่างกัน</p>
+        </section>
+        <aside class="room-info" id="room-info" aria-live="polite"></aside>
+      </div>
+    </section>
+  </div>
+  <div class="map-reference-overlay" id="campus-map-modal" role="dialog" aria-modal="true" aria-labelledby="campus-map-title">
+    <section class="map-reference-dialog">
+      <div class="map-reference-header">
+        <h2 id="campus-map-title">ผังอาคาร SPU · ภาพอ้างอิง</h2>
+        <button class="map-reference-close" id="close-campus-map" type="button" aria-label="ปิดผัง">×</button>
+      </div>
+      <img src="./spu-map.png" alt="ภาพแผนผังแคมปัส SPU แสดงตำแหน่งอาคารต่าง ๆ">
+    </section>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div class="no-webgl" id="no-webgl"><div><h2>เปิดแผนที่ 3D ไม่สำเร็จ</h2><p>ลองใช้เบราว์เซอร์ที่รองรับ WebGL และเชื่อมต่ออินเทอร์เน็ต แล้วโหลดหน้าใหม่อีกครั้ง</p></div></div>
+
+  <script>
+    (() => {
+      const storageKey = 'spu-study-buddy-v1';
+      const places = {
+        library: { name: 'อาคาร 5 (อาคารสยามบรมราชกุมารี) · ห้องสมุด SPU', number: '05', short: 'Bldg 5 · 15 floors', position: [14, 0, -13], color: 0x8c7bf0, emoji: '📚' },
+        cowork: { name: 'โคเวิร์กกิง', number: '10', short: 'Co-working · Bldg 10', position: [-4, 0, -16], color: 0x55b9e8, emoji: '💡' },
+        cafe: { name: 'คาเฟ่คณะ', number: '02', short: 'Faculty Cafe · Bldg 2', position: [-20, 0, 0], color: 0xb18af0, emoji: '☕' },
+        plaza: { name: 'ลานกิจกรรม', number: '04', short: 'Meet-up Plaza · Bldg 4', position: [16, 0, 3], color: 0x65aeea, emoji: '🌿' }
+      };
+      const campusBuildingSpecs = {
+        '5': { key: 'library', name: 'อาคาร 5 (อาคารสยามบรมราชกุมารี)', floors: 15, width: 13, depth: 10, height: 15, color: 0xb8d1dc, position: places.library.position },
+        '9': { key: 'campus-9', floors: 12, width: 10, depth: 8, height: 12, color: 0xb2ccd7, position: [22, 0, -24] },
+        '11': { key: 'campus-11', floors: 14, width: 14, depth: 8, height: 14, color: 0xaecbd5, position: [-20, 0, -15] }
+      };
+      const initialGroups = [
+        { id: 'g-accounting', title: 'ติวบัญชีขั้นต้น บทปรับปรุงก่อนสอบ', category: 'ธุรกิจ', place: 'library', date: dateOffset(1), time: '16:00', capacity: 5, joined: 2, host: 'แพรว · ปี 2', description: 'ทบทวนโจทย์และช่วยกันทำสรุป', joinedByMe: false },
+        { id: 'g-uiux', title: 'หาเพื่อนทำโปรเจกต์ UX/UI แชร์ไอเดียกัน', category: 'เทคโนโลยี', place: 'cowork', date: dateOffset(1), time: '17:30', capacity: 4, joined: 2, host: 'นนท์ · ปี 3', description: 'เอางานที่ทำอยู่มาแลก feedback กัน', joinedByMe: false },
+        { id: 'g-english', title: 'ฝึกพูดอังกฤษแบบไม่กดดัน ☕', category: 'ภาษา', place: 'cafe', date: dateOffset(2), time: '13:00', capacity: 5, joined: 3, host: 'มายด์ · ปี 1', description: 'ชวนกันคุยเรื่องทั่วไป ภาษาไม่ต้องเป๊ะ', joinedByMe: false },
+        { id: 'g-exam', title: 'อ่านสอบการตลาด ช่วยกันแชร์ชีต', category: 'สอบ', place: 'plaza', date: dateOffset(2), time: '15:00', capacity: 6, joined: 4, host: 'บอส · ปี 3', description: 'สรุปเนื้อหาและทำ quiz ก่อนสอบ', joinedByMe: false }
+      ];
+      const placeNames = Object.fromEntries(Object.entries(places).map(([key, place]) => [key, place.name]));
+      const buildingFloors = {
+        library: [
+          [{ icon: '🤫', name: 'โซนอ่านเงียบ', seats: 18, description: 'มุมสงบสำหรับอ่านหนังสือและทบทวนบทเรียน' }, { icon: '👥', name: 'ห้องติวกลุ่ม', seats: 8, description: 'โต๊ะใหญ่สำหรับติว แลกเปลี่ยนโจทย์ และทำงานเป็นทีม' }, { icon: '🪟', name: 'มุมอ่านริมหน้าต่าง', seats: 10, description: 'ที่นั่งบรรยากาศสบาย เหมาะกับอ่านหนังสือคนเดียว' }, { icon: '🖨️', name: 'โซนค้นคว้า', seats: 12, description: 'พื้นที่ค้นข้อมูลและเตรียมเอกสารก่อนเข้ากลุ่มติว' }, { icon: '☕', name: 'Café Amazon', seats: 12, description: 'ร้านกาแฟชั้น 1 · จำลองตำแหน่งหน้าร้านในแผนที่' }],
+          [{ icon: '📚', name: 'ชั้นหนังสือ', seats: 14, description: 'พื้นที่ค้นคว้าหนังสือและแหล่งอ้างอิง' }, { icon: '🧑‍💻', name: 'โต๊ะทำโปรเจกต์', seats: 8, description: 'มุมทำงานที่มีพื้นที่กางโน้ตบุ๊กและชีต' }, { icon: '🪴', name: 'มุมพักสายตา', seats: 6, description: 'พักระหว่างอ่าน เติมพลังแล้วค่อยไปต่อ' }, { icon: '🎧', name: 'โซนโฟกัส', seats: 10, description: 'ที่นั่งส่วนตัวสำหรับงานที่ต้องใช้สมาธิ' }],
+          [{ icon: '📝', name: 'ห้องทบทวนก่อนสอบ', seats: 8, description: 'ชวนกันทวนสรุปและลองทำข้อสอบเก่า' }, { icon: '🗣️', name: 'ห้องฝึกพรีเซนต์', seats: 6, description: 'ซ้อมนำเสนอและรับฟีดแบ็กจากเพื่อน' }, { icon: '📖', name: 'โซนอ่านเดี่ยว', seats: 12, description: 'โต๊ะอ่านหนังสือบรรยากาศเงียบสงบ' }, { icon: '☕', name: 'เลานจ์พักผ่อน', seats: 8, description: 'นั่งพักและเตรียมตัวก่อนเริ่มอ่านต่อ' }]
+        ],
+        cowork: [
+          [{ icon: '💡', name: 'โต๊ะระดมไอเดีย', seats: 8, description: 'นัดเพื่อนช่วยกันคิดและต่อยอดไอเดียโปรเจกต์' }, { icon: '💻', name: 'โซนทำงานร่วมกัน', seats: 10, description: 'พื้นที่เปิดสำหรับทำงานและแชร์ความคืบหน้า' }, { icon: '🗣️', name: 'ห้องคุยงาน', seats: 6, description: 'มุมคุยและแลกฟีดแบ็กกันแบบเป็นกันเอง' }, { icon: '🎨', name: 'สตูดิโอสร้างสรรค์', seats: 6, description: 'พื้นที่ทดลองไอเดียและทำงานออกแบบ' }],
+          [{ icon: '📊', name: 'ห้องเวิร์กช็อป', seats: 8, description: 'แบ่งทีมทำกิจกรรมหรือเตรียมงานนำเสนอ' }, { icon: '🎤', name: 'ห้องซ้อมพรีเซนต์', seats: 6, description: 'ซ้อมพูดก่อนวันจริงพร้อมเพื่อนช่วยดู' }, { icon: '🧩', name: 'มุมทำงานโปรเจกต์', seats: 8, description: 'ชวนทีมมาแบ่งงานและวางแผนไปด้วยกัน' }, { icon: '🛋️', name: 'เลานจ์ทีม', seats: 6, description: 'นั่งคุยสบาย ๆ ระหว่างพักจากงาน' }]
+        ],
+        cafe: [
+          [{ icon: '☕', name: 'คาเฟ่คุยภาษา', seats: 8, description: 'จิบเครื่องดื่มแล้วฝึกสนทนากับเพื่อนใหม่' }, { icon: '🥐', name: 'โต๊ะติวชิล', seats: 6, description: 'อ่านหนังสือและติวกันในบรรยากาศสบาย ๆ' }, { icon: '🪟', name: 'มุมหน้าต่าง', seats: 4, description: 'มุมโปรดสำหรับนั่งอ่านหรือทำงานเบา ๆ' }, { icon: '🧋', name: 'เคาน์เตอร์เครื่องดื่ม', seats: 4, description: 'แวะเติมความสดชื่นก่อนเริ่มติว' }],
+          [{ icon: '🍰', name: 'โต๊ะรวมเพื่อน', seats: 8, description: 'ชวนเพื่อนมาคุยและแลกเปลี่ยนสิ่งที่เรียน' }, { icon: '📓', name: 'มุมอ่านสบาย', seats: 6, description: 'พื้นที่เงียบขึ้นสำหรับอ่านและจดสรุป' }, { icon: '🎲', name: 'โต๊ะเกมพักสมอง', seats: 4, description: 'พักเบรกสั้น ๆ กับเพื่อนก่อนกลับไปอ่านต่อ' }, { icon: '🌤️', name: 'ระเบียงพักใจ', seats: 6, description: 'นั่งพักรับบรรยากาศระหว่างวัน' }]
+        ],
+        plaza: [
+          [{ icon: '🌿', name: 'ลานนัดพบ', seats: 12, description: 'จุดนัดเจอกันง่ายสำหรับเริ่มกิจกรรมหรือกลุ่มติว' }, { icon: '🎤', name: 'เวทีกิจกรรม', seats: 10, description: 'พื้นที่แชร์ไอเดียและจัดกิจกรรมเล็ก ๆ' }, { icon: '🪑', name: 'โต๊ะใต้ร่มไม้', seats: 8, description: 'นั่งคุยและทบทวนบทเรียนในบรรยากาศกลางแจ้ง' }, { icon: '🧋', name: 'มุมพักระหว่างคลาส', seats: 6, description: 'แวะนั่งพักแล้วนัดเพื่อนไปเรียนต่อ' }]
+        ]
+      };
+      const libraryFloorTemplates = buildingFloors.library;
+      while (buildingFloors.library.length < campusBuildingSpecs['5'].floors) {
+        const template = libraryFloorTemplates[buildingFloors.library.length % libraryFloorTemplates.length];
+        buildingFloors.library.push(template.map(room => ({ ...room })));
+      }
+      function dateOffset(days) {
+        const date = new Date();
+        date.setDate(date.getDate() + days);
+        return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      }
+      let groups = initialGroups;
+      let activePlace = 'all';
+      let activeCategory = 'all';
+      let toastTimer;
+      const groupList = document.getElementById('group-list');
+      const modal = document.getElementById('create-modal');
+      const buildingModal = document.getElementById('building-modal');
+      const campusMapModal = document.getElementById('campus-map-modal');
+      const enterBuildingButton = document.getElementById('enter-building');
+      let activeBuilding = null;
+      let activeFloor = 0;
+      let activeRoom = 0;
+      let quickBuildingPlace = null;
+
+      function showToast(message) {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.classList.add('visible');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove('visible'), 3000);
+      }
+      function safeReadGroups() {
+        try {
+          const saved = localStorage.getItem(storageKey);
+          if (!saved) return initialGroups.map(group => ({ ...group }));
+          const parsed = JSON.parse(saved);
+          if (!Array.isArray(parsed) || parsed.length > 100 || parsed.some(group =>
+            !group || typeof group.id !== 'string' || typeof group.title !== 'string' ||
+            !Object.hasOwn(places, group.place) || !Number.isInteger(group.capacity) ||
+            !Number.isInteger(group.joined) || group.joined < 1 || group.joined > group.capacity ||
+            typeof group.category !== 'string' || typeof group.date !== 'string' ||
+            typeof group.time !== 'string' || typeof group.host !== 'string' ||
+            typeof group.joinedByMe !== 'boolean'
+          )) throw new Error('ข้อมูลกลุ่มติวที่บันทึกไว้ไม่ถูกต้อง');
+          return parsed;
+        } catch (error) {
+          console.error('Unable to load saved study groups:', error);
+          showToast('อ่านข้อมูลกลุ่มที่บันทึกไว้ไม่ได้ กำลังใช้ข้อมูลตัวอย่าง');
+          return initialGroups.map(group => ({ ...group }));
+        }
+      }
+      groups = safeReadGroups();
+      function persistGroups() {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(groups));
+          return true;
+        } catch (error) {
+          console.error('Unable to save study groups:', error);
+          showToast('บันทึกไม่สำเร็จ พื้นที่จัดเก็บเบราว์เซอร์อาจเต็ม');
+          return false;
+        }
+      }
+      function formatDate(dateString) {
+        const date = new Date(`${dateString}T00:00:00`);
+        if (Number.isNaN(date.getTime())) return dateString;
+        return new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short' }).format(date);
+      }
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+      }
+      function renderBuildingExplorer() {
+        if (!activeBuilding) return;
+        const floors = buildingFloors[activeBuilding];
+        const rooms = floors[activeFloor];
+        const selectedRoom = rooms[activeRoom];
+        const buildingGroups = groups.filter(group => group.place === activeBuilding);
+        document.getElementById('building-title').textContent = places[activeBuilding].name;
+        document.getElementById('building-subtitle').textContent = `${places[activeBuilding].short} · เลือกชั้นและแตะห้องที่อยากไป`;
+        document.getElementById('floor-label').textContent = `ชั้น ${activeFloor + 1} · เลือกมุมที่ชอบ`;
+        document.getElementById('floor-tabs').innerHTML = floors.map((floor, index) =>
+          `<button class="floor-tab${index === activeFloor ? ' active' : ''}" data-floor="${index}" type="button" aria-pressed="${index === activeFloor}">${index + 1}</button>`
+        ).join('');
+        document.getElementById('room-grid').innerHTML = rooms.map((room, index) =>
+          `<button class="room-button${index === activeRoom ? ' selected' : ''}" data-room="${index}" type="button" aria-pressed="${index === activeRoom}"><span class="room-icon">${room.icon}</span><span class="room-name">${escapeHtml(room.name)}</span><span class="room-meta">👥 ${room.seats} ที่นั่งโดยประมาณ</span></button>`
+        ).join('');
+        const preview = buildingGroups[0];
+        document.getElementById('room-info').innerHTML = `
+          <div class="room-info-top">
+            <div class="room-info-icon">${selectedRoom.icon}</div>
+            <div><h3>${escapeHtml(selectedRoom.name)}</h3><p>${escapeHtml(selectedRoom.description)}</p></div>
+            <div class="room-stats"><div class="room-stat"><strong>${selectedRoom.seats}</strong><span>ที่นั่งจำลอง</span></div><div class="room-stat"><strong>${buildingGroups.length}</strong><span>กลุ่มติวในอาคาร</span></div></div>
+            <div class="room-group-preview">${preview ? `<strong>${escapeHtml(preview.title)}</strong><span>📅 ${escapeHtml(formatDate(preview.date))} · ${escapeHtml(preview.time)} น. · ${escapeHtml(preview.joinedByMe ? 'คุณเข้าร่วมแล้ว' : `${preview.joined}/${preview.capacity} คน`)}</span>` : '<strong>ยังไม่มีกลุ่มนัดในอาคารนี้</strong><span>ชวนเพื่อนตั้งกลุ่มแรกได้เลย ✨</span>'}</div>
+          </div>
+          <div class="room-actions"><button class="primary-btn" id="view-building-groups" type="button">👥 ดูกลุ่มติวในอาคารนี้</button><button class="secondary-btn" id="create-building-group" type="button">＋ เปิดกลุ่มนัดที่นี่</button></div>`;
+      }
+      function openBuilding(key) {
+        if (!Object.hasOwn(buildingFloors, key)) return;
+        activeBuilding = key;
+        activeFloor = 0;
+        activeRoom = 0;
+        renderBuildingExplorer();
+        buildingModal.classList.add('open');
+        if (window.focusPlace) window.focusPlace(key);
+      }
+      function closeBuilding() {
+        buildingModal.classList.remove('open');
+        activeBuilding = null;
+      }
+      document.getElementById('floor-tabs').addEventListener('click', event => {
+        const button = event.target.closest('[data-floor]');
+        if (!button || !activeBuilding) return;
+        activeFloor = Number(button.dataset.floor);
+        activeRoom = 0;
+        renderBuildingExplorer();
+      });
+      document.getElementById('room-grid').addEventListener('click', event => {
+        const button = event.target.closest('[data-room]');
+        if (!button || !activeBuilding) return;
+        activeRoom = Number(button.dataset.room);
+        renderBuildingExplorer();
+      });
+      document.getElementById('room-info').addEventListener('click', event => {
+        if (event.target.closest('#view-building-groups')) {
+          const place = activeBuilding;
+          closeBuilding();
+          activePlace = place;
+          activeCategory = 'all';
+          document.querySelectorAll('.place-button').forEach(item => item.classList.toggle('active', item.dataset.place === place));
+          document.querySelectorAll('.filter-btn').forEach(item => item.classList.toggle('active', item.dataset.filter === 'all'));
+          setMapFocus(false);
+          render();
+          if (window.focusPlace) window.focusPlace(place);
+        } else if (event.target.closest('#create-building-group')) {
+          const place = activeBuilding;
+          closeBuilding();
+          openModal();
+          document.querySelector('#create-form [name="place"]').value = place;
+        }
+      });
+      document.getElementById('close-building').addEventListener('click', closeBuilding);
+      buildingModal.addEventListener('click', event => { if (event.target === buildingModal) closeBuilding(); });
+      function render() {
+        const filtered = groups.filter(group => (activePlace === 'all' || group.place === activePlace) &&
+          (activeCategory === 'all' || group.category === activeCategory));
+        document.getElementById('visible-count').textContent = filtered.length;
+        document.getElementById('active-count').textContent = `${groups.length} กลุ่มกำลังเปิด`;
+        document.getElementById('open-groups-count').textContent = `${groups.length} กลุ่ม`;
+        document.getElementById('place-count-all').textContent = groups.length;
+        for (const place of Object.keys(places)) {
+          document.getElementById(`place-count-${place}`).textContent = groups.filter(group => group.place === place).length;
+        }
+        if (!filtered.length) {
+          groupList.innerHTML = '<div class="empty-state">ยังไม่มีกลุ่มในหมวดนี้<br>ลองเลือกตัวกรองอื่น หรือสร้างกลุ่มแรกเลย ✨</div>';
+          return;
+        }
+        groupList.innerHTML = filtered.map(group => {
+          const full = group.joined >= group.capacity;
+          const spots = group.capacity - group.joined;
+          const buttonText = group.joinedByMe ? 'เข้าร่วมแล้ว ✓' : full ? 'เต็มแล้ว' : 'เข้าร่วม';
+          return `<article class="group-card">
+            <div class="card-top"><span class="subject-tag">${escapeHtml(group.category)}</span><span class="spots">${full ? 'เต็มแล้ว' : `เหลือ ${spots} ที่`}</span></div>
+            <h3>${escapeHtml(group.title)}</h3>
+            <div class="group-meta">
+              <span>📍 ${escapeHtml(placeNames[group.place])}</span>
+              <span>🗓️ ${escapeHtml(formatDate(group.date))} · ${escapeHtml(group.time)} น.</span>
+              <span>👥 ${group.joined}/${group.capacity} คน${group.description ? ` · ${escapeHtml(group.description)}` : ''}</span>
+            </div>
+            <div class="card-bottom"><span class="host">ชวนโดย ${escapeHtml(group.host)}</span><div class="card-actions"><button class="route-btn" data-route="${escapeHtml(group.place)}" type="button">🧭 นำทาง</button><button class="join-btn${group.joinedByMe ? ' joined' : ''}" data-join="${escapeHtml(group.id)}" type="button" ${full && !group.joinedByMe ? 'disabled' : ''}>${buttonText}</button></div></div>
+          </article>`;
+        }).join('');
+      }
+      groupList.addEventListener('click', event => {
+        const routeButton = event.target.closest('[data-route]');
+        if (routeButton) {
+          const place = routeButton.dataset.route;
+          if (window.showCampusRoute) window.showCampusRoute(place);
+          showToast(`กำลังพาไปยัง${placeNames[place]} · เส้นทางเริ่มจากประตูมหาวิทยาลัย`);
+          return;
+        }
+        const button = event.target.closest('[data-join]');
+        if (!button) return;
+        const group = groups.find(item => item.id === button.dataset.join);
+        if (!group || group.joinedByMe || group.joined >= group.capacity) return;
+        group.joined += 1;
+        group.joinedByMe = true;
+        if (persistGroups()) {
+          render();
+          if (window.showCampusRoute) window.showCampusRoute(group.place);
+          showToast(`เข้าร่วมกลุ่ม “${group.title}” แล้ว · นัดกันที่${placeNames[group.place]}`);
+        } else {
+          group.joined -= 1;
+          group.joinedByMe = false;
+        }
+      });
+      document.getElementById('filters').addEventListener('click', event => {
+        const button = event.target.closest('[data-filter]');
+        if (!button) return;
+        activeCategory = button.dataset.filter;
+        document.querySelectorAll('.filter-btn').forEach(item => item.classList.toggle('active', item === button));
+        render();
+      });
+      document.getElementById('place-list').addEventListener('click', event => {
+        const button = event.target.closest('[data-place]');
+        if (!button) return;
+        activePlace = button.dataset.place;
+        document.querySelectorAll('.place-button').forEach(item => item.classList.toggle('active', item === button));
+        enterBuildingButton.classList.toggle('visible', activePlace !== 'all');
+        document.getElementById('route-to-place').classList.toggle('visible', activePlace !== 'all');
+        render();
+        if (button.dataset.place !== 'all' && window.focusPlace) window.focusPlace(button.dataset.place);
+      });
+      enterBuildingButton.addEventListener('click', () => {
+        if (activePlace === 'all') return;
+        if (!window.showExplodedCampusBuilding || !window.showExplodedCampusBuilding(activePlace)) {
+          openBuilding(activePlace);
+        }
+      });
+      document.getElementById('route-to-place').addEventListener('click', () => {
+        if (activePlace === 'all' || !window.showCampusRoute) return;
+        window.showCampusRoute(activePlace);
+        showToast(`กำลังพาไปยัง${placeNames[activePlace]} · เส้นทางเริ่มจากประตูมหาวิทยาลัย`);
+      });
+      document.getElementById('open-campus-map').addEventListener('click', () => {
+        campusMapModal.classList.add('open');
+      });
+      document.getElementById('close-campus-map').addEventListener('click', () => {
+        campusMapModal.classList.remove('open');
+      });
+      campusMapModal.addEventListener('click', event => {
+        if (event.target === campusMapModal) campusMapModal.classList.remove('open');
+      });
+      function openModal() {
+        modal.classList.add('open');
+        const dateInput = document.querySelector('#create-form [name="date"]');
+        const today = new Date();
+        const localDate = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+        dateInput.min = localDate;
+        if (!dateInput.value || dateInput.value < localDate) dateInput.value = localDate;
+        document.querySelector('#create-form [name="title"]').focus();
+      }
+      function closeModal() { modal.classList.remove('open'); }
+      document.getElementById('open-create').addEventListener('click', openModal);
+      document.getElementById('open-create-bottom').addEventListener('click', openModal);
+      function setMapFocus(isFocused) {
+        document.getElementById('app').classList.toggle('map-focus', isFocused);
+        document.getElementById('map-focus-label').textContent = isFocused ? 'แสดง UI' : 'ซ่อน UI';
+        document.getElementById('toggle-map-focus').setAttribute('aria-expanded', String(!isFocused));
+      }
+      document.getElementById('toggle-map-focus').addEventListener('click', () => {
+        const isFocused = document.getElementById('app').classList.toggle('map-focus');
+        setMapFocus(isFocused);
+        if (isFocused) document.getElementById('reset-camera').click();
+      });
+      document.getElementById('close-modal').addEventListener('click', closeModal);
+      modal.addEventListener('click', event => { if (event.target === modal) closeModal(); });
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+          closeModal();
+          closeBuilding();
+          campusMapModal.classList.remove('open');
+          if (window.closeExplodedCampusBuilding) window.closeExplodedCampusBuilding();
+        }
+      });
+      document.getElementById('create-form').addEventListener('submit', event => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const group = {
+          id: `g-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          title: String(form.get('title')).trim(),
+          category: String(form.get('category')),
+          place: String(form.get('place')),
+          date: String(form.get('date')),
+          time: String(form.get('time')),
+          capacity: Number(form.get('capacity')),
+          joined: 1,
+          host: String(form.get('host')).trim(),
+          description: String(form.get('description')).trim(),
+          joinedByMe: true
+        };
+        if (!group.title || !group.host || !Object.hasOwn(places, group.place) || group.capacity < 2 || group.capacity > 8) {
+          showToast('ตรวจสอบข้อมูลกลุ่มอีกครั้งก่อนสร้าง');
+          return;
+        }
+        groups.unshift(group);
+        if (persistGroups()) {
+          activePlace = 'all';
+          activeCategory = 'all';
+          document.querySelectorAll('.place-button').forEach(item => item.classList.toggle('active', item.dataset.place === 'all'));
+          document.querySelectorAll('.filter-btn').forEach(item => item.classList.toggle('active', item.dataset.filter === 'all'));
+          document.getElementById('route-to-place').classList.remove('visible');
+          render();
+          closeModal();
+          event.currentTarget.reset();
+          showToast('สร้างกลุ่มแล้ว! แชร์นัดกับเพื่อนในมอได้เลย');
+        } else {
+          groups.shift();
+        }
+      });
+
+      function initCampus() {
+        if (!window.THREE || !THREE.WebGLRenderer) {
+          document.getElementById('no-webgl').style.display = 'grid';
+          return;
+        }
+        try {
+          const container = document.getElementById('canvas-container');
+          const scene = new THREE.Scene();
+          scene.background = new THREE.Color(0x9bcbe8);
+          scene.fog = new THREE.Fog(0x9bcbe8, 125, 240);
+          const camera = new THREE.PerspectiveCamera(37, innerWidth / innerHeight, .1, 180);
+          camera.position.set(48, 57, 52);
+          const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'low-power' });
+          renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+          renderer.setSize(innerWidth, innerHeight);
+          renderer.shadowMap.enabled = true;
+          renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+          renderer.outputEncoding = THREE.sRGBEncoding;
+          renderer.toneMapping = THREE.ACESFilmicToneMapping;
+          renderer.toneMappingExposure = .84;
+          container.appendChild(renderer.domElement);
+          const controls = new THREE.OrbitControls(camera, renderer.domElement);
+          controls.target.set(0, 1.1, 0);
+          controls.enableDamping = true;
+          controls.dampingFactor = .06;
+          controls.maxPolarAngle = Math.PI / 2.12;
+          controls.minDistance = 24;
+          controls.maxDistance = 180;
+          scene.add(new THREE.HemisphereLight(0xd6f0ff, 0x445240, .62));
+          const sun = new THREE.DirectionalLight(0xfff0d8, 1.15);
+          sun.position.set(-22, 38, 14);
+          sun.castShadow = true;
+          sun.shadow.mapSize.set(1024, 1024);
+          scene.add(sun);
+
+          const materials = {
+            grass: new THREE.MeshStandardMaterial({ color: 0x5f9856, emissive: 0x132217, emissiveIntensity: .025, roughness: 1 }),
+            path: new THREE.MeshStandardMaterial({ color: 0xaeb7bc, roughness: 1 }),
+            road: new THREE.MeshStandardMaterial({ color: 0x4b5566, roughness: .98 }),
+            roadLine: new THREE.MeshBasicMaterial({ color: 0xe5e9e9 }),
+            white: new THREE.MeshStandardMaterial({ color: 0xf1f3f1, roughness: .9 }),
+            wall: new THREE.MeshStandardMaterial({ color: 0xc3d4d9, roughness: .88 }),
+            roof: new THREE.MeshStandardMaterial({ color: 0x397c91, roughness: .76 }),
+            roofPink: new THREE.MeshStandardMaterial({ color: 0x608b94, roughness: .8 }),
+            glass: new THREE.MeshStandardMaterial({ color: 0x298da4, emissive: 0x104d60, emissiveIntensity: .1, roughness: .3, metalness: .12 }),
+            darkGlass: new THREE.MeshStandardMaterial({ color: 0x244a5b, roughness: .3 }),
+            wood: new THREE.MeshStandardMaterial({ color: 0x8e8877, roughness: .94 }),
+            trunk: new THREE.MeshStandardMaterial({ color: 0x76634e, roughness: 1 }),
+            leaf: new THREE.MeshStandardMaterial({ color: 0x34794a, roughness: 1 }),
+            leafLight: new THREE.MeshStandardMaterial({ color: 0x65a94e, roughness: 1 }),
+            skin: new THREE.MeshStandardMaterial({ color: 0xe8b99f, roughness: .96, flatShading: true }),
+            shirtA: new THREE.MeshStandardMaterial({ color: 0x6556b7, roughness: .96, flatShading: true }),
+            shirtB: new THREE.MeshStandardMaterial({ color: 0x3f789f, roughness: .96, flatShading: true }),
+            shirtC: new THREE.MeshStandardMaterial({ color: 0x8060b2, roughness: .96, flatShading: true }),
+            shirtD: new THREE.MeshStandardMaterial({ color: 0x348b91, roughness: .96, flatShading: true }),
+            shirtE: new THREE.MeshStandardMaterial({ color: 0x4d598e, roughness: .96, flatShading: true }),
+            pants: new THREE.MeshStandardMaterial({ color: 0x34394c, roughness: .98, flatShading: true }),
+            shoe: new THREE.MeshStandardMaterial({ color: 0x282b35, roughness: .98, flatShading: true }),
+            hair: new THREE.MeshStandardMaterial({ color: 0x352f35, roughness: .98, flatShading: true }),
+            whiteAccent: new THREE.MeshStandardMaterial({ color: 0xf0eee8, roughness: .92, flatShading: true }),
+            bag: new THREE.MeshStandardMaterial({ color: 0x454965, roughness: .96, flatShading: true })
+          };
+          const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), materials.grass);
+          ground.rotation.x = -Math.PI / 2;
+          ground.position.y = -.18;
+          ground.receiveShadow = true;
+          scene.add(ground);
+          const campusLawn = new THREE.Mesh(
+            new THREE.PlaneGeometry(64, 58),
+            new THREE.MeshStandardMaterial({ color: 0x74a85d, emissive: 0x1a291a, emissiveIntensity: .025, roughness: 1 })
+          );
+          campusLawn.rotation.x = -Math.PI / 2;
+          campusLawn.position.y = -.145;
+          campusLawn.receiveShadow = true;
+          scene.add(campusLawn);
+          function box(parent, x, y, z, w, h, d, material, shadow = true) {
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+            mesh.position.set(x, y, z);
+            mesh.castShadow = shadow;
+            mesh.receiveShadow = true;
+            parent.add(mesh);
+            return mesh;
+          }
+          function addCafeSign(parent, label, color, x, y, z, width) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 96;
+            const context = canvas.getContext('2d');
+            context.fillStyle = `#${color.toString(16).padStart(6, '0')}`;
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            context.fillStyle = '#ffffff';
+            context.font = 'bold 42px Arial, sans-serif';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(label, canvas.width / 2, canvas.height / 2);
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.encoding = THREE.sRGBEncoding;
+            const sign = new THREE.Mesh(
+              new THREE.PlaneGeometry(width, width * .19),
+              new THREE.MeshBasicMaterial({ map: texture, depthTest: false })
+            );
+            sign.position.set(x, y, z);
+            sign.renderOrder = 15;
+            parent.add(sign);
+            return sign;
+          }
+          function path(x, z, width, depth) {
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), materials.path);
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.position.set(x, -.08, z);
+            scene.add(mesh);
+          }
+          function road(x, z, width, depth) {
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), materials.road);
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.position.set(x, -.07, z);
+            scene.add(mesh);
+          }
+          road(-36, 0, 6, 68);
+          road(0, -31, 72, 5);
+          road(0, 31, 72, 5);
+          road(34, 0, 5, 68);
+          for (let z = -31; z <= 31; z += 5) {
+            const dash = new THREE.Mesh(new THREE.PlaneGeometry(.14, 2.2), materials.roadLine);
+            dash.rotation.x = -Math.PI / 2;
+            dash.position.set(-36, -.035, z);
+            scene.add(dash);
+          }
+          for (let x = -32; x <= 32; x += 5) {
+            const dash = new THREE.Mesh(new THREE.PlaneGeometry(2.2, .14), materials.roadLine);
+            dash.rotation.x = -Math.PI / 2;
+            dash.position.set(x, -.035, 31);
+            scene.add(dash);
+          }
+          path(-27, 0, 2.2, 56);
+          path(28, 0, 2.2, 56);
+          path(0, -22, 58, 2.2);
+          path(0, 22, 58, 2.2);
+          path(-29, 0, 4, 2);
+          path(-4, -13, 2, 12);
+          path(-4, 0, 2, 12);
+          path(-4, 8, 2, 4);
+          path(8, 1, 2, 20);
+          path(8, 11.5, 2, 1);
+          path(0, 17, 2, 10);
+          path(-15, 10, 22, 2);
+          path(-20, 7.5, 2, 5);
+          path(15, 12, 20, 2);
+          path(16, 10, 2, 4);
+          path(11, -6.45, 6, 2);
+          path(0, 1, 2, 2);
+          path(0, 2, 14, 2);
+          path(0, 7, 2, 11);
+          const plaza = new THREE.Mesh(new THREE.PlaneGeometry(13, 7), new THREE.MeshStandardMaterial({ color: 0x59baf0, roughness: .24, metalness: .08 }));
+          plaza.rotation.x = -Math.PI / 2;
+          plaza.position.set(1, -.025, 17);
+          scene.add(plaza);
+          const pondBorderMaterial = new THREE.MeshStandardMaterial({ color: 0xf3f5ff, roughness: .82 });
+          box(scene, 1, .08, 13.35, 14.2, .2, .55, pondBorderMaterial);
+          box(scene, 1, .08, 20.65, 14.2, .2, .55, pondBorderMaterial);
+          box(scene, -6.1, .08, 17, .55, .2, 7.8, pondBorderMaterial);
+          box(scene, 8.1, .08, 17, .55, .2, 7.8, pondBorderMaterial);
+          const pondRippleMaterial = new THREE.MeshBasicMaterial({ color: 0xb2eeff, transparent: true, opacity: .7 });
+          for (let ripple = 0; ripple < 3; ripple++) {
+            const ring = new THREE.Mesh(new THREE.RingGeometry(.5 + ripple * .45, .56 + ripple * .45, 48), pondRippleMaterial);
+            ring.rotation.x = -Math.PI / 2;
+            ring.position.set(1, .015 + ripple * .002, 17);
+            scene.add(ring);
+          }
+          const campusFence = new THREE.Group();
+          const fenceMaterial = new THREE.MeshStandardMaterial({ color: 0xf5f7ff, roughness: .7 });
+          for (const z of [-29, 29]) {
+            for (let x = -31; x <= 31; x += 3.2) {
+              box(campusFence, x, .65, z, .12, 1.3, .12, fenceMaterial);
+              box(campusFence, x + 1.5, .55, z, 2.9, .09, .08, fenceMaterial, false);
+              box(campusFence, x + 1.5, .96, z, 2.9, .09, .08, fenceMaterial, false);
+            }
+          }
+          for (const x of [-31, 31]) {
+            for (let z = -28; z <= 28; z += 3.2) {
+              if (x === -31 && z >= -3 && z <= 3) continue;
+              box(campusFence, x, .65, z, .12, 1.3, .12, fenceMaterial);
+              box(campusFence, x, .55, z + 1.5, .08, .09, 2.9, fenceMaterial, false);
+              box(campusFence, x, .96, z + 1.5, .08, .09, 2.9, fenceMaterial, false);
+            }
+          }
+          for (const gateZ of [-3.5, 3.5]) {
+            box(campusFence, -31, 1.5, gateZ, .28, 3, .28, new THREE.MeshStandardMaterial({ color: 0x5faeb7, roughness: .78 }));
+            const gateLight = new THREE.Mesh(
+              new THREE.SphereGeometry(.2, 10, 8),
+              new THREE.MeshBasicMaterial({ color: 0xfff1fa })
+            );
+            gateLight.position.set(-31, 3.1, gateZ);
+            campusFence.add(gateLight);
+          }
+          scene.add(campusFence);
+          const parkingLot = new THREE.Mesh(
+            new THREE.PlaneGeometry(17, 18),
+            new THREE.MeshBasicMaterial({ color: 0x41445b })
+          );
+          parkingLot.rotation.x = -Math.PI / 2;
+          parkingLot.position.set(-1, -.035, -3);
+          scene.add(parkingLot);
+          for (let z = -10; z <= 4; z += 3.5) {
+            for (const x of [-6, -1, 4]) {
+              const line = new THREE.Mesh(new THREE.PlaneGeometry(4.4, .075), materials.roadLine);
+              line.rotation.x = -Math.PI / 2;
+              line.position.set(x, -.02, z);
+              scene.add(line);
+            }
+          }
+          const bus = new THREE.Group();
+          let shuttleDirection = 1;
+          box(bus, 0, 1.25, 0, 4.6, 2.2, 2.1, new THREE.MeshStandardMaterial({ color: 0x4a7de2 }));
+          box(bus, .05, 1.86, 1.08, 3.4, .8, .06, materials.glass, false);
+          box(bus, .05, 1.86, -1.08, 3.4, .8, .06, materials.glass, false);
+          box(bus, 2.34, 1.25, 0, .06, 1.25, 1.6, materials.darkGlass, false);
+          box(bus, 2.39, 1.88, 0, .06, .74, 1.44, materials.glass, false);
+          box(bus, 0, 2.4, 0, 3.4, .12, 1.72, new THREE.MeshStandardMaterial({ color: 0x354c91 }));
+          for (const x of [-1.5, 1.45]) {
+            for (const z of [-1.08, 1.08]) {
+              const wheel = new THREE.Mesh(new THREE.CylinderGeometry(.38, .38, .18, 16), materials.shoe);
+              wheel.rotation.x = Math.PI / 2;
+              wheel.position.set(x, .42, z);
+              bus.add(wheel);
+            }
+          }
+          bus.position.set(-38, 0, 0);
+          scene.add(bus);
+          const busStopSign = new THREE.Group();
+          box(busStopSign, 0, 1.25, 0, .12, 2.5, .12, materials.darkGlass);
+          const busStopPanel = new THREE.Mesh(new THREE.BoxGeometry(.9, .65, .14), new THREE.MeshStandardMaterial({ color: 0x6d63dc }));
+          busStopPanel.position.set(0, 2.45, 0);
+          busStopSign.add(busStopPanel);
+          busStopSign.position.set(-33, 0, 0);
+          scene.add(busStopSign);
+          const campusLights = [];
+          for (const [x, z] of [[-18, -5], [-5, -18], [17, -5], [-18, 5], [5, 18], [18, 5]]) {
+            const lamp = new THREE.Group();
+            box(lamp, 0, 2.1, 0, .13, 4.2, .13, materials.darkGlass);
+            const head = new THREE.Mesh(
+              new THREE.SphereGeometry(.25, 12, 8),
+              new THREE.MeshStandardMaterial({ color: 0xb7ecff, emissive: 0x4c8bff, emissiveIntensity: .1 })
+            );
+            head.position.y = 4.15;
+            lamp.add(head);
+            const light = new THREE.PointLight(0x91bdff, 0, 12, 1.8);
+            light.position.set(0, 4, 0);
+            lamp.add(light);
+            lamp.position.set(x, 0, z);
+            scene.add(lamp);
+            campusLights.push(light);
+          }
+
+          const rooftopFans = [];
+          function createBuilding(key, options) {
+            const [x, , z] = places[key].position;
+            const group = new THREE.Group();
+            const { width, depth, height, color } = options;
+            const floorCount = options.floors || Math.ceil(height / 2.5);
+            const floorHeight = height / floorCount;
+            const wall = new THREE.MeshStandardMaterial({ color, roughness: .87 });
+            const blueTrim = new THREE.MeshStandardMaterial({ color: 0x288fa7, roughness: .65 });
+            const frameMaterial = new THREE.MeshStandardMaterial({ color: 0xf8fcff, roughness: .68 });
+            box(group, 0, height / 2, 0, width, height, depth, wall);
+            box(group, 0, height + .12, 0, width + .5, .24, depth + .5, materials.roofPink);
+            box(group, 0, .16, 0, width + .35, .32, depth + .35, frameMaterial);
+            for (let floor = 0; floor < floorCount; floor++) {
+              const y = (floor + .5) * floorHeight;
+              const windowHeight = Math.min(.85, floorHeight * .58);
+              const frameThickness = Math.min(.075, floorHeight * .08);
+              const floorLine = (floor + 1) * floorHeight;
+              if (floor > 0) {
+                box(group, 0, floorLine, depth / 2 + .11, width + .16, frameThickness, .16, blueTrim, false);
+                box(group, 0, floorLine, -depth / 2 - .11, width + .16, frameThickness, .16, blueTrim, false);
+              }
+              const columnCount = Math.max(3, Math.floor(width / 2.25));
+              for (let column = 0; column < columnCount; column++) {
+                const wx = -width / 2 + (column + .5) * width / columnCount;
+                for (const side of [-1, 1]) {
+                  const frontZ = side * (depth / 2 + .055);
+                  box(group, wx, y, frontZ, width / columnCount * .68, windowHeight, .045, materials.glass, false);
+                  const frameZ = side * (depth / 2 + .095);
+                  for (const frameX of [-width / columnCount * .36, width / columnCount * .36]) {
+                    box(group, wx + frameX, y, frameZ, frameThickness, windowHeight + .12, .075, frameMaterial, false);
+                  }
+                  for (const frameY of [-windowHeight / 2, windowHeight / 2]) {
+                    box(group, wx, y + frameY, frameZ, width / columnCount * .76, frameThickness, .075, frameMaterial, false);
+                  }
+                  box(group, wx, y, side * (depth / 2 + .14), .045, windowHeight * .92, .05, frameMaterial, false);
+                }
+              }
+              for (const side of [-1, 1]) {
+                for (let column = -1; column <= 1; column++) {
+                  const paneX = side * (width / 2 + .055);
+                  const paneZ = column * depth * .27;
+                  box(group, paneX, y, paneZ, .045, windowHeight, Math.min(1.15, depth * .18), materials.glass, false);
+                  const frameX = side * (width / 2 + .095);
+                  for (const frameZ of [-depth * .095, depth * .095]) {
+                    box(group, frameX, y, paneZ + frameZ, .075, windowHeight + .12, .075, frameMaterial, false);
+                  }
+                  for (const frameY of [-windowHeight / 2, windowHeight / 2]) {
+                    box(group, frameX, y + frameY, paneZ, .075, frameThickness, Math.min(1.3, depth * .2), frameMaterial, false);
+                  }
+                }
+              }
+              if (options.balconies && floor > 0 && floor < floorCount) {
+                const balconyZ = depth / 2 + .42;
+                box(group, 0, y - floorHeight * .3, balconyZ, width * .82, .14, .72, frameMaterial);
+                box(group, 0, y, balconyZ + .32, width * .82, .07, .07, blueTrim, false);
+                for (let railX = -width * .39; railX <= width * .4; railX += 1.15) {
+                  box(group, railX, y - floorHeight * .15, balconyZ + .32, .055, Math.min(.38, floorHeight * .35), .055, frameMaterial, false);
+                }
+              }
+            }
+            box(group, 0, height - .18, depth / 2 + .16, width * .92, .16, .12, blueTrim, false);
+            box(group, 0, 1.25, depth / 2 + .09, 2, 2.5, .16, materials.darkGlass, false);
+            box(group, 0, .15, depth / 2 + 1.55, 3.3, .3, 2.8, materials.path);
+            for (const columnX of [-1.25, 1.25]) {
+              box(group, columnX, 1.25, depth / 2 + .72, .2, 2.5, .2, frameMaterial);
+            }
+            if (key === 'library') {
+              box(group, -3.35, 1.05, depth / 2 + .2, 3.3, 1.9, .12, materials.glass, false);
+              box(group, -3.35, 2.05, depth / 2 + .33, 3.55, .16, .72, new THREE.MeshStandardMaterial({ color: 0x198443, roughness: .65 }));
+              addCafeSign(group, 'CAFE AMAZON', 0x198443, -3.35, 2.55, depth / 2 + .4, 3.25);
+            }
+            if (key === 'library') {
+              box(group, 0, height + .29, 0, width * .72, .08, depth * .62, materials.roof);
+              for (const xOffset of [-width / 2 + 1.2, width / 2 - 1.2]) {
+                box(group, xOffset, height + .9, 0, .35, 1.2, .35, materials.white);
+              }
+            }
+            if (key === 'cowork') {
+              const awning = box(group, 0, 1.6, depth / 2 + .45, width * .72, .18, .75, new THREE.MeshStandardMaterial({ color: 0x62aee8 }));
+              awning.castShadow = true;
+            }
+            for (let unitX = -width / 2 + 1; unitX <= width / 2 - 1; unitX += 3) {
+              box(group, unitX, height - .78, -depth / 2 - .28, 1.05, .56, .42, frameMaterial);
+              box(group, unitX, height - .78, -depth / 2 - .51, .78, .24, .06, materials.glass, false);
+            }
+            const rooftopUnits = 3;
+            for (let unitIndex = 0; unitIndex < rooftopUnits; unitIndex++) {
+              const unitX = (unitIndex - (rooftopUnits - 1) / 2) * 2.8;
+              const unitZ = -depth / 2 + 1.4;
+              box(group, unitX, height + .56, unitZ, 1.6, .62, 1.35, frameMaterial);
+              box(group, unitX, height + .9, unitZ, 1.28, .08, 1.03, blueTrim, false);
+              for (let vent = -1; vent <= 1; vent++) {
+                box(group, unitX + vent * .32, height + .57, unitZ + .69, .09, .35, .06, blueTrim, false);
+              }
+              const ventFan = new THREE.Mesh(
+                new THREE.CylinderGeometry(.3, .3, .055, 16),
+                new THREE.MeshStandardMaterial({ color: 0x93a8bc, metalness: .55, roughness: .35 })
+              );
+              ventFan.position.set(unitX, height + .96, unitZ);
+              group.add(ventFan);
+              const fanBlades = new THREE.Group();
+              fanBlades.position.set(unitX, height + 1.02, unitZ);
+              for (let bladeIndex = 0; bladeIndex < 3; bladeIndex++) {
+                const blade = new THREE.Mesh(
+                  new THREE.BoxGeometry(.46, .045, .11),
+                  new THREE.MeshStandardMaterial({ color: 0x4c78a8, metalness: .42, roughness: .38 })
+                );
+                blade.position.x = .19;
+                blade.rotation.y = bladeIndex * Math.PI / 3;
+                fanBlades.add(blade);
+              }
+              group.add(fanBlades);
+              rooftopFans.push(fanBlades);
+            }
+            const roofRim = box(group, 0, height + .2, 0, width + .72, .16, depth + .72, blueTrim, false);
+            roofRim.position.y = height + .24;
+            const hitArea = new THREE.Mesh(
+              new THREE.BoxGeometry(width + 1.2, height + 1.2, depth + 1.2),
+              new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, colorWrite: false, depthWrite: false })
+            );
+            hitArea.position.y = height / 2;
+            group.add(hitArea);
+            group.position.set(x, 0, z);
+            group.userData.place = key;
+            scene.add(group);
+            return group;
+          }
+          const buildings = {
+            library: createBuilding('library', { ...campusBuildingSpecs['5'], balconies: false })
+          };
+          const sevenEleven = new THREE.Group();
+          const storeWall = new THREE.MeshStandardMaterial({ color: 0xf8fbff, roughness: .82 });
+          const storeGlass = new THREE.MeshStandardMaterial({ color: 0x70d5ed, emissive: 0x12566c, emissiveIntensity: .12, roughness: .25, metalness: .04 });
+          const storeRed = new THREE.MeshStandardMaterial({ color: 0xe31837, roughness: .65 });
+          const storeOrange = new THREE.MeshStandardMaterial({ color: 0xf58220, roughness: .65 });
+          const storeGreen = new THREE.MeshStandardMaterial({ color: 0x16894b, roughness: .65 });
+          box(sevenEleven, 0, 1.55, 0, 4.7, 3.1, 3.5, storeWall);
+          box(sevenEleven, 0, 3.12, 0, 4.85, .16, 3.65, storeRed);
+          box(sevenEleven, 0, 2.86, 1.78, 4.72, .16, .08, storeOrange, false);
+          box(sevenEleven, 0, 2.67, 1.78, 4.72, .16, .08, storeGreen, false);
+          box(sevenEleven, -.72, 1.28, 1.78, 2.65, 1.45, .08, storeGlass, false);
+          box(sevenEleven, 1.48, 1.18, 1.79, .72, 2.15, .09, materials.darkGlass, false);
+          box(sevenEleven, 1.48, .18, 1.86, .84, .12, .18, materials.white, false);
+          addCafeSign(sevenEleven, '7-ELEVEN', 0xd7193f, 0, 2.37, 1.84, 3.15);
+          box(sevenEleven, 0, .08, 0, 5.25, .12, 4.05, materials.path, false);
+          sevenEleven.position.set(23.2, 0, -11);
+          sevenEleven.userData.landmark = '7-Eleven';
+          scene.add(sevenEleven);
+          const buildingOptions = {
+            library: { ...campusBuildingSpecs['5'], balconies: false }
+          };
+          const explodedBuildings = {};
+          function createExplodedBuilding(key, options, original = buildings[key]) {
+            const root = new THREE.Group();
+            const { width, depth, height, color } = options;
+            const floorCount = options.floors || Math.ceil(height / 2.5);
+            const wallMaterial = new THREE.MeshStandardMaterial({ color, roughness: .82 });
+            const trimMaterial = new THREE.MeshStandardMaterial({ color: 0x288fa7, roughness: .65 });
+            const floors = [];
+            const floorSpacing = height / floorCount;
+            const wallHeight = Math.max(.58, floorSpacing * .72);
+            const windowHeight = wallHeight * .58;
+            for (let floorIndex = 0; floorIndex < floorCount; floorIndex++) {
+              const floor = new THREE.Group();
+              const slab = box(floor, 0, 0, 0, width + .48, .1, depth + .48, materials.white);
+              slab.castShadow = true;
+              box(floor, 0, -.07, 0, width + .56, .05, depth + .56, trimMaterial, false);
+              box(floor, 0, wallHeight / 2, depth / 2, width, wallHeight, .16, wallMaterial);
+              box(floor, 0, wallHeight / 2, -depth / 2, width, wallHeight, .16, wallMaterial);
+              box(floor, width / 2, wallHeight / 2, 0, .16, wallHeight, depth, wallMaterial);
+              box(floor, -width / 2, wallHeight / 2, 0, .16, wallHeight, depth, wallMaterial);
+              const columnCount = Math.max(2, Math.floor(width / 2.5));
+              for (let column = 0; column < columnCount; column++) {
+                const x = -width / 2 + (column + .5) * width / columnCount;
+                for (const side of [-1, 1]) {
+                  box(floor, x, wallHeight * .52, side * (depth / 2 + .09), width / columnCount * .62, windowHeight, .045, materials.glass, false);
+                  box(floor, x, wallHeight * .52 + windowHeight / 2, side * (depth / 2 + .13), width / columnCount * .7, .035, .055, trimMaterial, false);
+                }
+              }
+              for (const side of [-1, 1]) {
+                for (const zOffset of [-depth * .25, depth * .25]) {
+                  box(floor, side * (width / 2 + .09), wallHeight * .52, zOffset, .045, windowHeight, depth * .22, materials.glass, false);
+                }
+              }
+              for (const x of [-width / 2 + .18, width / 2 - .18]) {
+                for (const z of [-depth / 2 + .18, depth / 2 - .18]) {
+                  box(floor, x, wallHeight / 2, z, .12, wallHeight * .92, .12, materials.whiteAccent, false);
+                }
+              }
+              box(floor, 0, .08, 0, Math.min(2.8, width * .46), .05, Math.min(1.5, depth * .3), trimMaterial, false);
+              if (floorIndex === 0 && key === 'library') addCafeSign(floor, 'CAFE AMAZON', 0x198443, 0, wallHeight * .74, depth / 2 + .18, 3.2);
+              if (floorIndex === 0 && key === 'campus-11') addCafeSign(floor, 'TRUE COFFEE', 0xe52b35, 3.5, wallHeight * .74, depth / 2 + .18, 3.2);
+              if (floorIndex === floorCount - 1) {
+                box(floor, 0, wallHeight + .07, 0, width + .66, .12, depth + .66, materials.roofPink, false);
+                box(floor, 0, wallHeight + .15, 0, width + .36, .04, depth + .36, materials.whiteAccent, false);
+              }
+              const outlineMaterial = new THREE.MeshBasicMaterial({
+                color: floorIndex === 0 ? 0x625bd4 : 0xb8c3ec,
+                transparent: true,
+                opacity: floorIndex === 0 ? .95 : .42
+              });
+              const outline = new THREE.LineSegments(
+                new THREE.EdgesGeometry(new THREE.BoxGeometry(width + .8, wallHeight + .12, depth + .8)),
+                outlineMaterial
+              );
+              outline.position.y = wallHeight / 2;
+              floor.add(outline);
+              floor.add(labelSprite(`${floorIndex + 1}F`, 0x625bd4, false));
+              floor.children[floor.children.length - 1].position.set(width / 2 + 1.4, wallHeight * .7, depth / 2 + .5);
+              floor.children[floor.children.length - 1].scale.set(2.2, .55, 1);
+              floor.userData = { place: key, explodedFloor: floorIndex, selected: false, outline };
+              floor.position.y = floorIndex * floorSpacing;
+              root.add(floor);
+              floors.push(floor);
+            }
+            const [x, , z] = options.position || places[key].position;
+            root.position.set(x, 0, z);
+            root.visible = false;
+            scene.add(root);
+            return {
+              root, floors, floorCount, floorSpacing, width, depth, expanded: true, selectedFloor: 0, key,
+              original, name: options.name || places[key].name, placeKey: places[key] ? key : null
+            };
+          }
+          for (const [key, options] of Object.entries(buildingOptions)) {
+            explodedBuildings[key] = createExplodedBuilding(key, options);
+          }
+          let activeExplodedBuilding = null;
+          const floorPanel = document.getElementById('floor-explode-panel');
+          const floorChipList = document.getElementById('floor-chip-list');
+          const floorExplodeTitle = document.getElementById('floor-explode-title');
+          const floorExplodeStatus = document.getElementById('floor-explode-status-text');
+          const floorExplodeToggle = document.getElementById('floor-explode-toggle');
+          let cameraAnimationFrameId = null;
+          let cameraAnimationChangedDamping = false;
+          function cancelCameraAnimation() {
+            if (cameraAnimationFrameId !== null) {
+              cancelAnimationFrame(cameraAnimationFrameId);
+              cameraAnimationFrameId = null;
+            }
+            if (cameraAnimationChangedDamping) {
+              controls.enableDamping = true;
+              cameraAnimationChangedDamping = false;
+            }
+          }
+          function animateCameraTo(target, position, duration = 650) {
+            cancelCameraAnimation();
+            const startTarget = controls.target.clone();
+            const startPosition = camera.position.clone();
+            const startTime = performance.now();
+            controls.enableDamping = false;
+            cameraAnimationChangedDamping = true;
+            function animateFocus(now) {
+              const progress = Math.min((now - startTime) / duration, 1);
+              const eased = progress * progress * (3 - 2 * progress);
+              camera.position.lerpVectors(startPosition, position, eased);
+              controls.target.lerpVectors(startTarget, target, eased);
+              controls.update();
+              if (progress < 1) {
+                cameraAnimationFrameId = requestAnimationFrame(animateFocus);
+                return;
+              }
+              cameraAnimationFrameId = null;
+              controls.enableDamping = true;
+              cameraAnimationChangedDamping = false;
+            }
+            cameraAnimationFrameId = requestAnimationFrame(animateFocus);
+          }
+          function animateCameraOrbit(target, position) {
+            cancelCameraAnimation();
+            const startTarget = controls.target.clone();
+            const startPosition = camera.position.clone();
+            const flightStart = performance.now();
+            function animateFlight(now) {
+              const progress = Math.min((now - flightStart) / 1000, 1);
+              const eased = progress * progress * (3 - 2 * progress);
+              camera.position.lerpVectors(startPosition, position, eased);
+              controls.target.lerpVectors(startTarget, target, eased);
+              if (progress < 1) {
+                cameraAnimationFrameId = requestAnimationFrame(animateFlight);
+                return;
+              }
+
+              const offset = position.clone().sub(target);
+              const radius = Math.hypot(offset.x, offset.z);
+              const startAngle = Math.atan2(offset.z, offset.x);
+              const orbitStart = now;
+              function animateOrbit(frameTime) {
+                const orbitProgress = Math.min((frameTime - orbitStart) / 1800, 1);
+                const orbitEased = orbitProgress * orbitProgress * (3 - 2 * orbitProgress);
+                const angle = startAngle + orbitEased * Math.PI * .5;
+                camera.position.set(
+                  target.x + Math.cos(angle) * radius,
+                  target.y + offset.y,
+                  target.z + Math.sin(angle) * radius
+                );
+                controls.target.copy(target);
+                if (orbitProgress < 1) cameraAnimationFrameId = requestAnimationFrame(animateOrbit);
+                else cameraAnimationFrameId = null;
+              }
+              cameraAnimationFrameId = requestAnimationFrame(animateOrbit);
+            }
+            cameraAnimationFrameId = requestAnimationFrame(animateFlight);
+          }
+          controls.addEventListener('start', () => {
+            cancelCameraAnimation();
+          });
+          function animateCameraZoom(factor) {
+            cancelCameraAnimation();
+            const target = controls.target.clone();
+            const startPosition = camera.position.clone();
+            const offset = startPosition.clone().sub(target);
+            const endDistance = THREE.MathUtils.clamp(
+              offset.length() * factor,
+              controls.minDistance,
+              controls.maxDistance
+            );
+            const endPosition = target.clone().add(offset.normalize().multiplyScalar(endDistance));
+            const startTime = performance.now();
+            controls.enableDamping = false;
+            cameraAnimationChangedDamping = true;
+            controls.update();
+            function animateZoom(now) {
+              const progress = Math.min((now - startTime) / 220, 1);
+              const eased = progress * progress * (3 - 2 * progress);
+              camera.position.lerpVectors(startPosition, endPosition, eased);
+              controls.target.copy(target);
+              controls.update();
+              if (progress < 1) {
+                cameraAnimationFrameId = requestAnimationFrame(animateZoom);
+                return;
+              }
+              cameraAnimationFrameId = null;
+              controls.enableDamping = true;
+              cameraAnimationChangedDamping = false;
+            }
+            cameraAnimationFrameId = requestAnimationFrame(animateZoom);
+          }
+          function setExplodedFloor(index, focus = true) {
+            if (!activeExplodedBuilding) return;
+            activeExplodedBuilding.selectedFloor = index;
+            activeExplodedBuilding.floors.forEach((floor, floorIndex) => {
+              const selected = floorIndex === index;
+              floor.userData.selected = selected;
+              floor.userData.outline.material.color.setHex(selected ? 0x625bd4 : 0xb8c3ec);
+              floor.userData.outline.material.opacity = selected ? .95 : .42;
+            });
+            floorChipList.querySelectorAll('[data-floor-index]').forEach(button => {
+              const selected = Number(button.dataset.floorIndex) === index;
+              button.classList.toggle('active', selected);
+              button.setAttribute('aria-pressed', String(selected));
+            });
+            const cafe = index === 0 && activeExplodedBuilding.key === 'library'
+              ? ' · Café Amazon'
+              : index === 0 && activeExplodedBuilding.key === 'campus-11'
+                ? ' · True Coffee'
+                : '';
+            floorExplodeStatus.textContent = `กำลังโฟกัสชั้น ${index + 1}${cafe} · แตะโมเดลเพื่อหมุนมุมมอง`;
+            if (focus) {
+              const target = new THREE.Vector3(
+                activeExplodedBuilding.root.position.x,
+                index * (activeExplodedBuilding.floorSpacing + (activeExplodedBuilding.expanded ? 1.35 : 0)) +
+                  activeExplodedBuilding.floorSpacing / 2,
+                activeExplodedBuilding.root.position.z
+              );
+              animateCameraTo(target, target.clone().add(new THREE.Vector3(18, 13, 21)));
+            }
+          }
+          function focusExplodedBuilding(exploded) {
+            const target = new THREE.Vector3(
+              exploded.root.position.x,
+              ((exploded.floorCount - 1) * (exploded.floorSpacing + (exploded.expanded ? 1.35 : 0)) +
+                exploded.floorSpacing) / 2,
+              exploded.root.position.z
+            );
+            const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
+            const totalHeight = exploded.floorCount * exploded.floorSpacing +
+              (exploded.floorCount - 1) * (exploded.expanded ? 1.35 : 0);
+            const distance = Math.max(
+              totalHeight / (2 * Math.tan(halfFov)),
+              exploded.width / (2 * Math.tan(halfFov) * camera.aspect),
+              exploded.depth / (2 * Math.tan(halfFov)),
+              24
+            ) * 1.2;
+            animateCameraTo(
+              target,
+              target.clone().add(new THREE.Vector3(distance * .52, distance * .58, distance * .68)),
+              850
+            );
+          }
+          function showExplodedBuilding(key) {
+            const exploded = explodedBuildings[key];
+            if (!exploded) return false;
+            if (activeExplodedBuilding) closeExplodedBuilding();
+            quickBuildingCard.hidden = true;
+            activeExplodedBuilding = exploded;
+            exploded.original.visible = false;
+            exploded.root.visible = true;
+            exploded.expanded = true;
+            exploded.selectedFloor = 0;
+            floorExplodeTitle.textContent = exploded.name;
+            document.getElementById('floor-explore-interior').hidden = !exploded.placeKey;
+            floorChipList.replaceChildren();
+            for (let index = 0; index < exploded.floorCount; index++) {
+              const chip = document.createElement('button');
+              chip.className = `floor-chip${index === 0 ? ' active' : ''}`;
+              chip.type = 'button';
+              chip.dataset.floorIndex = String(index);
+              chip.setAttribute('aria-pressed', String(index === 0));
+              chip.textContent = `ชั้น ${index + 1}`;
+              floorChipList.append(chip);
+            }
+            floorExplodeToggle.textContent = '▤ รวมชั้น';
+            floorExplodeStatus.textContent = `${exploded.floorCount} ชั้น · แตะชั้นเพื่อดูใกล้ๆ`;
+            floorPanel.hidden = false;
+            setExplodedFloor(0, false);
+            focusExplodedBuilding(exploded);
+            return true;
+          }
+          function closeExplodedBuilding() {
+            if (!activeExplodedBuilding) return;
+            const key = Object.keys(explodedBuildings).find(name => explodedBuildings[name] === activeExplodedBuilding);
+            activeExplodedBuilding.root.visible = false;
+            if (key) explodedBuildings[key].original.visible = true;
+            activeExplodedBuilding = null;
+            floorPanel.hidden = true;
+          }
+          window.showExplodedCampusBuilding = showExplodedBuilding;
+          window.closeExplodedCampusBuilding = closeExplodedBuilding;
+          floorChipList.addEventListener('click', event => {
+            const button = event.target.closest('[data-floor-index]');
+            if (button) setExplodedFloor(Number(button.dataset.floorIndex));
+          });
+          floorExplodeToggle.addEventListener('click', () => {
+            if (!activeExplodedBuilding) return;
+            activeExplodedBuilding.expanded = !activeExplodedBuilding.expanded;
+            floorExplodeToggle.textContent = activeExplodedBuilding.expanded ? '▤ รวมชั้น' : '▤ แยกชั้น';
+            floorExplodeStatus.textContent = activeExplodedBuilding.expanded
+              ? 'แยกชั้นแล้ว · แตะชั้นเพื่อเลือก'
+              : 'รวมชั้นแล้ว · แยกอีกครั้งเพื่อดูรายละเอียด';
+          });
+          document.getElementById('floor-explode-close').addEventListener('click', closeExplodedBuilding);
+          document.getElementById('floor-explore-interior').addEventListener('click', () => {
+            if (!activeExplodedBuilding) return;
+            const placeKey = activeExplodedBuilding.placeKey;
+            closeExplodedBuilding();
+            if (placeKey) openBuilding(placeKey);
+          });
+          const otherBuildings = [];
+          Object.entries(campusBuildingSpecs).filter(([number]) => number !== '5').forEach(([number, spec]) => {
+            const { x, z } = { x: spec.position[0], z: spec.position[2] };
+            const { width, depth, height, floors } = spec;
+            const group = new THREE.Group();
+            const wall = new THREE.MeshStandardMaterial({ color: spec.color, roughness: .8 });
+            const trim = new THREE.MeshStandardMaterial({ color: 0x288fa7, roughness: .65 });
+            if (number === '11') {
+              const wingWidth = width * .41;
+              box(group, -width * .285, height / 2, 0, wingWidth, height, depth, wall);
+              box(group, width * .285, height / 2, 0, wingWidth, height, depth, wall);
+              box(group, 0, height * .78, 0, width * .16, height * .78, depth * .88, wall);
+              box(group, 0, height * .53, depth / 2 + .08, width * .14, height * .88, .08, materials.glass, false);
+            } else {
+              box(group, 0, height / 2, 0, width, height, depth, wall);
+            }
+            box(group, 0, height + .12, 0, width + .4, .24, depth + .4, materials.roofPink);
+            box(group, 0, height + .28, 0, width + .62, .1, depth + .62, trim);
+            const floorHeight = height / floors;
+            for (let floor = 0; floor < floors; floor++) {
+              const windowY = (floor + .5) * floorHeight;
+              const windowHeight = Math.min(.72, floorHeight * .58);
+              for (const sideX of [-1, 1]) {
+                box(group, sideX * (width / 2 + .025), windowY, 0, .05, windowHeight, depth * .63, materials.glass, false);
+              }
+              for (let column = -2; column <= 2; column++) {
+                const windowX = column * width * .17;
+                if (number === '11' && Math.abs(windowX) < width * .12) continue;
+                box(group, windowX, windowY, depth / 2 + .025, width * .11, windowHeight, .05, materials.glass, false);
+                if (floor > 0) {
+                  box(group, windowX, floor * floorHeight, depth / 2 + .06, width * .12, .035, .06, trim, false);
+                }
+              }
+            }
+            box(group, 0, Math.min(1.2, height * .12), depth / 2 + .05, 1.3, Math.min(2.4, height * .24), .1, materials.darkGlass, false);
+            if (number === '11') {
+              const storefrontX = width * .285;
+              box(group, storefrontX, 1.05, depth / 2 + .16, 3.1, 1.9, .1, materials.glass, false);
+              box(group, storefrontX, 2.05, depth / 2 + .3, 3.35, .16, .68, new THREE.MeshStandardMaterial({ color: 0xe52b35, roughness: .65 }));
+              addCafeSign(group, 'TRUE COFFEE', 0xe52b35, storefrontX, 2.55, depth / 2 + .36, 3.05);
+            }
+            const hitArea = new THREE.Mesh(
+              new THREE.BoxGeometry(width + 1.2, height + 1.2, depth + 1.2),
+              new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, colorWrite: false, depthWrite: false })
+            );
+            hitArea.position.y = height / 2;
+            group.add(hitArea);
+            group.position.set(x, 0, z);
+            group.userData.buildingNumber = number;
+            group.userData.buildingKey = `campus-${number}`;
+            scene.add(group);
+            otherBuildings.push({ ...spec, group, number, x, z });
+          });
+          otherBuildings.forEach(building => {
+            const key = `campus-${building.number}`;
+            explodedBuildings[key] = createExplodedBuilding(key, {
+              width: building.width,
+              depth: building.depth,
+              height: building.height,
+              color: building.color,
+              floors: building.floors,
+              position: [building.x, 0, building.z],
+              name: `อาคารเรียน ${building.number}`
+            }, building.group);
+          });
+          function labelSprite(text, color, numbered = false) {
+            const canvas = document.createElement('canvas');
+            canvas.width = numbered ? 128 : 512;
+            canvas.height = numbered ? 128 : 128;
+            const context = canvas.getContext('2d');
+            if (numbered) {
+              context.fillStyle = '#176579';
+              context.beginPath();
+              context.arc(64, 64, 55, 0, Math.PI * 2);
+              context.fill();
+              context.strokeStyle = '#fff';
+              context.lineWidth = 7;
+              context.stroke();
+              context.fillStyle = '#fff';
+              context.font = 'bold 53px "Noto Sans Thai", sans-serif';
+              context.textAlign = 'center';
+              context.textBaseline = 'middle';
+              context.fillText(text, 64, 67);
+            } else {
+              context.fillStyle = 'rgba(250,251,248,.94)';
+              context.beginPath(); context.roundRect(8, 10, 496, 108, 28); context.fill();
+              context.strokeStyle = `#${color.toString(16).padStart(6, '0')}`;
+              context.lineWidth = 5; context.stroke();
+              context.fillStyle = '#273a32';
+              context.font = 'bold 38px "Noto Sans Thai", sans-serif';
+              context.textAlign = 'center';
+              context.textBaseline = 'middle';
+              context.fillText(text, 256, 65);
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.encoding = THREE.sRGBEncoding;
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
+            sprite.renderOrder = 20;
+            sprite.scale.set(numbered ? 2.6 : 5.6, numbered ? 2.6 : 1.4, 1);
+            return sprite;
+          }
+          const numberedBuildings = [
+            { key: 'library', place: places.library, number: '5', height: campusBuildingSpecs['5'].height },
+            ...otherBuildings.map(building => ({
+              ...building, key: `campus-${building.number}`, place: { name: `อาคารเรียน ${building.number}` }
+            }))
+          ];
+          const buildingLabels = [];
+          numberedBuildings.forEach(({ key, place, number, height, x, z }) => {
+            const placeKey = places[key] ? key : null;
+            const px = placeKey ? places[placeKey].position[0] : x;
+            const pz = placeKey ? places[placeKey].position[2] : z;
+            const label = labelSprite(number, 0x176579, true);
+            label.position.set(px, height + 3, pz);
+            label.userData.buildingNumber = number;
+            if (key) label.userData.buildingKey = key;
+            if (placeKey) label.userData.place = placeKey;
+            scene.add(label);
+            buildingLabels.push(label);
+          });
+          function tree(x, z, scale = 1) {
+            const group = new THREE.Group();
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.18 * scale, .28 * scale, 1.6 * scale, 8), materials.trunk);
+            trunk.position.y = .8 * scale; trunk.castShadow = true; group.add(trunk);
+            const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(1.05 * scale, 1), Math.random() > .5 ? materials.leaf : materials.leafLight);
+            crown.position.y = 2.05 * scale; crown.castShadow = true; group.add(crown);
+            group.position.set(x, 0, z); scene.add(group);
+          }
+          for (const [x, z, scale] of [
+            [-32,-25,1.2],[-29,-18,.9],[-8,-26,1.1],[4,-27,.9],[29,-23,1.2],[31,-15,.9],
+            [-30,1,.8],[31,10,1],[-30,22,1.1],[-24,26,.9],[-5,26,1.1],[8,27,.9],[28,24,1.15],[32,18,.8],
+            [-10,-24,.75],[10,-25,.85],[-30,12,.85],[30,-2,.75]
+          ]) tree(x, z, scale);
+          function bench(x, z, rotation = 0) {
+            const group = new THREE.Group();
+            box(group, 0, .55, 0, 2, .16, .65, materials.wood);
+            box(group, 0, .94, -.25, 2, .65, .14, materials.wood);
+            for (const px of [-.72, .72]) box(group, px, .27, 0, .12, .54, .12, materials.trunk);
+            group.position.set(x, 0, z); group.rotation.y = rotation; scene.add(group);
+          }
+          bench(-3.8, -1, Math.PI / 2); bench(3.8, 1, -Math.PI / 2); bench(-2.5, 3, 0); bench(2.5, -3, Math.PI);
+          function createStudySpot(x, z, shirtMaterials) {
+            const spot = new THREE.Group();
+            const tableTop = new THREE.Mesh(
+              new THREE.BoxGeometry(3.4, .18, 1.35),
+              new THREE.MeshStandardMaterial({ color: 0x9b704e, roughness: .78 })
+            );
+            tableTop.position.y = 1.02;
+            tableTop.castShadow = true;
+            spot.add(tableTop);
+            for (const legX of [-1.42, 1.42]) {
+              for (const legZ of [-.48, .48]) box(spot, legX, .5, legZ, .13, 1, .13, materials.darkGlass);
+            }
+            const laptopBase = new THREE.Mesh(new THREE.BoxGeometry(.88, .065, .58), materials.darkGlass);
+            laptopBase.position.set(-.38, 1.145, 0);
+            spot.add(laptopBase);
+            const laptopScreen = new THREE.Mesh(
+              new THREE.BoxGeometry(.88, .58, .065),
+              new THREE.MeshStandardMaterial({ color: 0x282c51, metalness: .35, roughness: .35 })
+            );
+            laptopScreen.position.set(-.38, 1.46, -.25);
+            spot.add(laptopScreen);
+            const screenGlow = new THREE.Mesh(
+              new THREE.PlaneGeometry(.72, .42),
+              new THREE.MeshBasicMaterial({ color: 0x76d8ff })
+            );
+            screenGlow.position.set(-.38, 1.47, -.212);
+            spot.add(screenGlow);
+            const notebook = new THREE.Mesh(
+              new THREE.BoxGeometry(.48, .035, .58),
+              new THREE.MeshStandardMaterial({ color: 0xf5efff, roughness: .85 })
+            );
+            notebook.position.set(.78, 1.135, .12);
+            spot.add(notebook);
+            for (let line = 0; line < 4; line++) {
+              const pageLine = new THREE.Mesh(
+                new THREE.BoxGeometry(.32, .008, .018),
+                new THREE.MeshBasicMaterial({ color: 0x8e9dd0 })
+              );
+              pageLine.position.set(.78, 1.157, -.07 + line * .12);
+              spot.add(pageLine);
+            }
+            const cup = new THREE.Mesh(
+              new THREE.CylinderGeometry(.12, .1, .23, 16),
+              new THREE.MeshStandardMaterial({ color: 0xf8fbff, roughness: .45 })
+            );
+            cup.position.set(1.28, 1.22, -.36);
+            spot.add(cup);
+            const drink = new THREE.Mesh(
+              new THREE.CylinderGeometry(.085, .085, .012, 16),
+              new THREE.MeshStandardMaterial({ color: 0x714e9b, roughness: .35 })
+            );
+            drink.position.set(1.28, 1.34, -.36);
+            spot.add(drink);
+            const seated = [];
+            for (const side of [-1, 1]) {
+              const chair = new THREE.Group();
+              box(chair, 0, .55, 0, .95, .15, .86, new THREE.MeshStandardMaterial({ color: 0x625bd4 }));
+              box(chair, 0, .98, -.37, .95, .9, .14, new THREE.MeshStandardMaterial({ color: 0x625bd4 }));
+              for (const chairX of [-.34, .34]) {
+                for (const chairZ of [-.27, .27]) box(chair, chairX, .28, chairZ, .09, .56, .09, materials.darkGlass);
+              }
+              chair.position.set(side * 2.3, 0, 0);
+              chair.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+              spot.add(chair);
+              const person = new THREE.Group();
+              const torso = new THREE.Mesh(new THREE.CylinderGeometry(.27, .33, .68, 12), shirtMaterials[side > 0 ? 1 : 0]);
+              torso.position.y = 1.06;
+              torso.castShadow = true;
+              person.add(torso);
+              const head = new THREE.Mesh(new THREE.SphereGeometry(.255, 14, 10), materials.skin);
+              head.position.y = 1.59;
+              head.castShadow = true;
+              person.add(head);
+              const hair = new THREE.Mesh(new THREE.SphereGeometry(.262, 14, 10, 0, Math.PI * 2, 0, Math.PI * .6), materials.hair);
+              hair.position.y = 1.68;
+              person.add(hair);
+              const fringe = new THREE.Mesh(new THREE.SphereGeometry(.18, 10, 8), materials.hair);
+              fringe.position.set(0, 1.61, .16);
+              person.add(fringe);
+              const eyes = new THREE.MeshBasicMaterial({ color: 0x29243e });
+              for (const eyeX of [-.08, .08]) {
+                const eye = new THREE.Mesh(new THREE.SphereGeometry(.023, 8, 8), eyes);
+                eye.position.set(eyeX, 1.59, .235);
+                person.add(eye);
+              }
+              const legs = [];
+              for (const legSide of [-1, 1]) {
+                const thigh = new THREE.Mesh(
+                  new THREE.BoxGeometry(.22, .24, .62),
+                  materials.pants
+                );
+                thigh.position.set(legSide * .14, .61, .24);
+                person.add(thigh);
+                const shin = new THREE.Mesh(new THREE.CylinderGeometry(.075, .08, .36, 10), materials.pants);
+                shin.position.set(legSide * .14, .27, .49);
+                person.add(shin);
+                const shoe = new THREE.Mesh(new THREE.BoxGeometry(.2, .11, .34), materials.shoe);
+                shoe.position.set(legSide * .14, .095, .57);
+                person.add(shoe);
+                legs.push(thigh);
+              }
+              const arms = [];
+              for (const armSide of [-1, 1]) {
+                const arm = new THREE.Group();
+                arm.position.set(armSide * .3, 1.34, .02);
+                const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(.085, .1, .38, 10), shirtMaterials[side > 0 ? 1 : 0]);
+                sleeve.position.set(armSide * .03, -.08, .14);
+                sleeve.rotation.x = Math.PI / 2.8;
+                arm.add(sleeve);
+                const forearm = new THREE.Mesh(new THREE.CylinderGeometry(.065, .075, .3, 10), materials.skin);
+                forearm.position.set(armSide * .03, -.24, .3);
+                forearm.rotation.x = Math.PI / 2.4;
+                arm.add(forearm);
+                const hand = new THREE.Mesh(new THREE.SphereGeometry(.075, 8, 8), materials.skin);
+                hand.position.set(armSide * .03, -.34, .41);
+                arm.add(hand);
+                person.add(arm);
+                arms.push(arm);
+              }
+              person.position.set(side * 2.3, 0, 0);
+              person.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+              person.scale.setScalar(1.05);
+              spot.add(person);
+              seated.push({ person, head, arms, legs, phase: side });
+            }
+            spot.position.set(x, 0, z);
+            scene.add(spot);
+            return seated;
+          }
+          const studyPartners = [
+            ...createStudySpot(-9, 9, [materials.shirtA, materials.shirtB]),
+            ...createStudySpot(10, 10, [materials.shirtC, materials.shirtD])
+          ];
+          function createWalker(shirtMaterial, route, phase, hasBackpack = false) {
+            const group = new THREE.Group();
+            const torso = new THREE.Mesh(new THREE.CylinderGeometry(.29, .39, .8, 9, 1, false), shirtMaterial);
+            torso.position.y = 1.13;
+            torso.castShadow = true;
+            group.add(torso);
+            const shirtHem = new THREE.Mesh(new THREE.TorusGeometry(.29, .035, 6, 16), materials.whiteAccent);
+            shirtHem.rotation.x = Math.PI / 2;
+            shirtHem.position.y = .75;
+            group.add(shirtHem);
+            const collar = new THREE.Mesh(new THREE.TorusGeometry(.18, .045, 6, 12), materials.whiteAccent);
+            collar.rotation.x = Math.PI / 2;
+            collar.position.set(0, 1.48, .015);
+            group.add(collar);
+            const pocket = new THREE.Mesh(new THREE.BoxGeometry(.16, .2, .035), materials.whiteAccent);
+            pocket.position.set(.16, 1.18, .286);
+            group.add(pocket);
+            const neck = new THREE.Mesh(new THREE.CylinderGeometry(.105, .115, .16, 8), materials.skin);
+            neck.position.y = 1.56;
+            neck.castShadow = true;
+            group.add(neck);
+            const head = new THREE.Mesh(new THREE.SphereGeometry(.28, 11, 8), materials.skin);
+            head.position.y = 1.82;
+            head.castShadow = true;
+            group.add(head);
+            const nose = new THREE.Mesh(new THREE.SphereGeometry(.045, 7, 5), materials.skin);
+            nose.position.set(0, 1.78, .27);
+            group.add(nose);
+            const mouth = new THREE.Mesh(
+              new THREE.TorusGeometry(.055, .012, 5, 12, Math.PI),
+              new THREE.MeshBasicMaterial({ color: 0x9b5968 })
+            );
+            mouth.position.set(0, 1.7, .259);
+            mouth.rotation.z = Math.PI;
+            group.add(mouth);
+            const hair = new THREE.Mesh(new THREE.SphereGeometry(.292, 10, 7, 0, Math.PI * 2, 0, Math.PI * .58), materials.hair);
+            hair.position.y = 1.9;
+            group.add(hair);
+            const fringe = new THREE.Mesh(new THREE.BoxGeometry(.31, .105, .16), materials.hair);
+            fringe.position.set(0, 1.82, .205);
+            fringe.rotation.x = -.2;
+            group.add(fringe);
+            const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x29243e });
+            for (const eyeX of [-.09, .09]) {
+              const eyeWhite = new THREE.Mesh(new THREE.SphereGeometry(.047, 7, 6), materials.white);
+              eyeWhite.position.set(eyeX, 1.82, .245);
+              group.add(eyeWhite);
+              const eye = new THREE.Mesh(new THREE.SphereGeometry(.021, 6, 5), eyeMaterial);
+              eye.position.set(eyeX, 1.82, .285);
+              group.add(eye);
+            }
+            for (const earX of [-.275, .275]) {
+              const ear = new THREE.Mesh(new THREE.SphereGeometry(.068, 7, 6), materials.skin);
+              ear.position.set(earX, 1.78, -.005);
+              group.add(ear);
+            }
+            if (hasBackpack) {
+              const backpack = new THREE.Mesh(new THREE.BoxGeometry(.46, .58, .23), materials.bag);
+              backpack.position.set(0, 1.1, -.31);
+              backpack.castShadow = true;
+              group.add(backpack);
+              const bagPocket = new THREE.Mesh(new THREE.BoxGeometry(.3, .19, .035), materials.shirtC);
+              bagPocket.position.set(0, .98, -.44);
+              group.add(bagPocket);
+              const bagTop = new THREE.Mesh(new THREE.BoxGeometry(.29, .035, .04), materials.whiteAccent);
+              bagTop.position.set(0, 1.095, -.45);
+              group.add(bagTop);
+              for (const side of [-1, 1]) {
+                const strap = new THREE.Mesh(new THREE.BoxGeometry(.07, .6, .07), materials.whiteAccent);
+                strap.position.set(side * .2, 1.14, -.08);
+                strap.rotation.z = side * -.14;
+                group.add(strap);
+              }
+            }
+            const arms = [];
+            const legs = [];
+            for (const side of [-1, 1]) {
+              const armPivot = new THREE.Group();
+              armPivot.position.set(side * .34, 1.42, 0);
+              const upperArm = new THREE.Mesh(new THREE.CylinderGeometry(.095, .11, .48, 10), shirtMaterial);
+              upperArm.position.y = -.23;
+              upperArm.castShadow = true;
+              armPivot.add(upperArm);
+              const cuff = new THREE.Mesh(new THREE.CylinderGeometry(.105, .105, .08, 10), materials.whiteAccent);
+              cuff.position.y = -.46;
+              armPivot.add(cuff);
+              const forearm = new THREE.Mesh(new THREE.CylinderGeometry(.075, .09, .28, 10), materials.skin);
+              forearm.position.y = -.62;
+              forearm.castShadow = true;
+              armPivot.add(forearm);
+              const hand = new THREE.Mesh(new THREE.SphereGeometry(.105, 10, 8), materials.skin);
+              hand.position.y = -.78;
+              armPivot.add(hand);
+              group.add(armPivot);
+              arms.push(armPivot);
+
+              const legPivot = new THREE.Group();
+              legPivot.position.set(side * .15, .78, 0);
+              const trousers = new THREE.Mesh(new THREE.CylinderGeometry(.115, .105, .62, 10), materials.pants);
+              trousers.position.y = -.31;
+              trousers.castShadow = true;
+              legPivot.add(trousers);
+              const knee = new THREE.Mesh(new THREE.SphereGeometry(.112, 10, 8), materials.pants);
+              knee.position.y = -.52;
+              legPivot.add(knee);
+              const shoe = new THREE.Mesh(new THREE.BoxGeometry(.23, .13, .36), materials.shoe);
+              shoe.position.set(0, -.62, .075);
+              shoe.castShadow = true;
+              legPivot.add(shoe);
+              const sole = new THREE.Mesh(new THREE.BoxGeometry(.235, .035, .37), materials.whiteAccent);
+              sole.position.set(0, -.68, .075);
+              legPivot.add(sole);
+              group.add(legPivot);
+              legs.push(legPivot);
+            }
+            const routeLength = route.reduce((length, point, index) => {
+              const next = route[(index + 1) % route.length];
+              return length + Math.hypot(next[0] - point[0], next[1] - point[1]);
+            }, 0);
+            group.scale.setScalar(1.4);
+            group.position.set(route[0][0], 0, route[0][1]);
+            scene.add(group);
+            return { group, torso, head, route, routeLength, progress: phase % routeLength, arms, legs, phase, ownedMaterials: [mouth.material, eyeMaterial] };
+          }
+          const walkingRoute = [
+            [-9, 0], [-8, -4], [-6, -7], [0, -8], [6, -7], [8, -4],
+            [9, 0], [8, 4], [6, 7], [0, 8], [-6, 7], [-8, 4]
+          ];
+          const crossCampusRoute = [[-27, -22], [27, -22], [27, 22], [-27, 22]];
+          const verticalRoute = [[-27, -20], [-27, 20], [27, 20], [27, -20]];
+          const walkers = [
+            createWalker(materials.shirtA, walkingRoute, 0, true),
+            createWalker(materials.shirtB, walkingRoute, 9, true),
+            createWalker(materials.shirtC, walkingRoute, 18, false),
+            createWalker(materials.shirtD, crossCampusRoute, 5, true),
+            createWalker(materials.shirtE, crossCampusRoute, 26, false),
+            createWalker(materials.shirtB, verticalRoute, 13, true),
+            createWalker(materials.shirtA, verticalRoute, 31, false),
+            createWalker(materials.shirtD, verticalRoute, 45, true)
+          ];
+          function moveWalker(walker, delta, time) {
+            walker.progress = (walker.progress + delta * 2.25) % walker.routeLength;
+            let remaining = walker.progress;
+            let segmentIndex = 0;
+            while (segmentIndex < walker.route.length) {
+              const start = walker.route[segmentIndex];
+              const end = walker.route[(segmentIndex + 1) % walker.route.length];
+              const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
+              if (remaining <= length) {
+                const ratio = length ? remaining / length : 0;
+                walker.group.position.set(
+                  start[0] + (end[0] - start[0]) * ratio,
+                  Math.abs(Math.sin(time * 10 + walker.phase)) * .08,
+                  start[1] + (end[1] - start[1]) * ratio
+                );
+                walker.group.rotation.y = Math.atan2(end[0] - start[0], end[1] - start[1]);
+                break;
+              }
+              remaining -= length;
+              segmentIndex += 1;
+            }
+            const stride = Math.sin(time * 10 + walker.phase);
+            walker.legs[0].rotation.x = stride * .62;
+            walker.legs[1].rotation.x = -stride * .62;
+            walker.arms[0].rotation.x = -stride * .48;
+            walker.arms[1].rotation.x = stride * .48;
+            walker.torso.rotation.z = Math.sin(time * 5 + walker.phase) * .025;
+            walker.head.rotation.y = Math.sin(time * .8 + walker.phase) * .12;
+          }
+          const markerObjects = {};
+          for (const [key, place] of Object.entries(places)) {
+            const marker = new THREE.Group();
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(1.15, .09, 8, 32), new THREE.MeshBasicMaterial({ color: place.color }));
+            ring.rotation.x = Math.PI / 2; ring.position.y = .12; marker.add(ring);
+            const orb = new THREE.Mesh(new THREE.SphereGeometry(.3, 16, 12), new THREE.MeshBasicMaterial({ color: place.color }));
+            orb.position.y = 1; marker.add(orb);
+            marker.position.set(place.position[0], .1, place.position[2]);
+            scene.add(marker);
+            markerObjects[key] = marker;
+          }
+          let routeCore = null;
+          let routeWalker = null;
+          function clearRoute() {
+            if (routeCore) {
+              scene.remove(routeCore);
+              routeCore.geometry.dispose();
+              routeCore.material.dispose();
+              routeCore = null;
+            }
+            if (routeWalker) {
+              scene.remove(routeWalker);
+              routeWalker.userData.badgeTexture.dispose();
+              routeWalker.userData.badgeMaterial.dispose();
+              routeWalker = null;
+            }
+          }
+          function createRouteVisual(curve, label) {
+            routeCore = new THREE.Mesh(
+              new THREE.TubeGeometry(curve, 120, .3, 12, false),
+              new THREE.MeshBasicMaterial({
+                color: 0x082f75,
+                depthWrite: false,
+                transparent: false,
+                opacity: 1
+              })
+            );
+            routeCore.renderOrder = 4;
+            scene.add(routeCore);
+            const badgeCanvas = document.createElement('canvas');
+            badgeCanvas.width = 384;
+            badgeCanvas.height = 160;
+            const badgeContext = badgeCanvas.getContext('2d');
+            badgeContext.shadowColor = 'rgba(38, 20, 55, .28)';
+            badgeContext.shadowBlur = 18;
+            badgeContext.fillStyle = '#fff8fc';
+            badgeContext.beginPath();
+            badgeContext.roundRect(18, 18, 348, 124, 42);
+            badgeContext.fill();
+            badgeContext.shadowBlur = 0;
+            const badgeColor = '#a31550';
+            badgeContext.strokeStyle = badgeColor;
+            badgeContext.lineWidth = 10;
+            badgeContext.stroke();
+            badgeContext.fillStyle = badgeColor;
+            badgeContext.font = '900 88px system-ui, sans-serif';
+            badgeContext.textAlign = 'center';
+            badgeContext.textBaseline = 'middle';
+            badgeContext.fillText(label, 192, 84);
+            const badgeTexture = new THREE.CanvasTexture(badgeCanvas);
+            badgeTexture.encoding = THREE.sRGBEncoding;
+            const badgeMaterial = new THREE.SpriteMaterial({
+              map: badgeTexture,
+              transparent: true,
+              depthWrite: false
+            });
+            const badge = new THREE.Sprite(badgeMaterial);
+            badge.scale.set(3.6, 1.5, 1);
+            routeWalker = new THREE.Group();
+            routeWalker.add(badge);
+            routeWalker.userData = { curve, progress: 0, badgeMaterial, badgeTexture };
+            scene.add(routeWalker);
+          }
+          function showRouteTo(key) {
+            const place = places[key];
+            if (!place) return;
+            clearRoute();
+            const routeStart = [0, .02, 2];
+            const destinationEntrances = {
+              library: [14, .02, -6.45],
+              cowork: [-4, .02, -10.95],
+              cafe: [-20, .02, 5.05],
+              plaza: [16, .02, 8.05]
+            };
+            const routes = {
+              library: [routeStart, [8, .02, 2], [8, .02, -6.45], destinationEntrances.library],
+              cowork: [routeStart, [-4, .02, 2], destinationEntrances.cowork],
+              cafe: [routeStart, [-4, .02, 2], [-4, .02, 10], [-20, .02, 10], destinationEntrances.cafe],
+              plaza: [routeStart, [8, .02, 2], [8, .02, 12], [16, .02, 12], destinationEntrances.plaza]
+            };
+            const routeCurve = new THREE.CurvePath();
+            const routePoints = routes[key].map(point => new THREE.Vector3(...point));
+            for (let index = 0; index < routePoints.length - 1; index++) {
+              routeCurve.add(new THREE.LineCurve3(routePoints[index], routePoints[index + 1]));
+            }
+            createRouteVisual(routeCurve, 'SPU');
+            focusRoute(routeCurve);
+            if (matchMedia('(max-width: 760px)').matches) {
+              setMapFocus(true);
+            }
+          }
+          const raycaster = new THREE.Raycaster();
+          const pointer = new THREE.Vector2();
+          const quickBuildingCard = document.getElementById('building-quick-card');
+          function closestStudyPlace(x, z) {
+            return Object.entries(places).reduce((closest, [key, place]) => {
+              const distance = (place.position[0] - x) ** 2 + (place.position[2] - z) ** 2;
+              return distance < closest.distance ? { key, distance } : closest;
+            }, { key: 'library', distance: Infinity }).key;
+          }
+          function openQuickBuilding(buildingNumber, x, z) {
+            quickBuildingPlace = closestStudyPlace(x, z);
+            document.getElementById('quick-building-title').textContent = `อาคารเรียน ${buildingNumber}`;
+            document.getElementById('quick-building-description').textContent =
+              `อาคารจำลอง · จุดนัดติวที่ใกล้ที่สุดคือ${places[quickBuildingPlace].name}`;
+            quickBuildingCard.hidden = false;
+          }
+          document.getElementById('close-quick-building').addEventListener('click', () => {
+            quickBuildingCard.hidden = true;
+          });
+          document.getElementById('quick-building-groups').addEventListener('click', () => {
+            if (!quickBuildingPlace) return;
+            activePlace = quickBuildingPlace;
+            activeCategory = 'all';
+            document.querySelectorAll('.place-button').forEach(item => item.classList.toggle('active', item.dataset.place === activePlace));
+            document.querySelectorAll('.filter-btn').forEach(item => item.classList.toggle('active', item.dataset.filter === 'all'));
+            setMapFocus(false);
+            quickBuildingCard.hidden = true;
+            render();
+            showRouteTo(activePlace);
+          });
+          document.getElementById('quick-building-create').addEventListener('click', () => {
+            if (!quickBuildingPlace) return;
+            const place = quickBuildingPlace;
+            quickBuildingCard.hidden = true;
+            openModal();
+            document.querySelector('#create-form [name="place"]').value = place;
+            showToast(`เลือก${places[place].name}เป็นจุดนัดใกล้อาคารนี้แล้ว`);
+          });
+          renderer.domElement.addEventListener('pointerup', event => {
+            if (event.button !== 0 ||
+                Math.abs(event.clientX - (renderer.domElement._downX || event.clientX)) > 5 ||
+                Math.abs(event.clientY - (renderer.domElement._downY || event.clientY)) > 5) return;
+            const canvasRect = renderer.domElement.getBoundingClientRect();
+            if (!canvasRect.width || !canvasRect.height) return;
+            pointer.x = ((event.clientX - canvasRect.left) / canvasRect.width) * 2 - 1;
+            pointer.y = -((event.clientY - canvasRect.top) / canvasRect.height) * 2 + 1;
+            raycaster.setFromCamera(pointer, camera);
+            const targets = [
+              ...Object.entries(buildings).map(([key, object]) => ({ key, object })),
+              ...Object.entries(explodedBuildings).map(([key, exploded]) => ({ key, object: exploded.root })),
+              ...otherBuildings.map(building => ({ object: building.group, building })),
+              ...buildingLabels.map(object => ({ object }))
+            ];
+            const hit = raycaster.intersectObjects(targets.filter(item => item.object.visible).map(item => item.object), true)[0];
+            if (hit) {
+              let node = hit.object;
+              while (node && !node.userData.place && !node.userData.buildingNumber) node = node.parent;
+              if (node && node.userData.place) {
+                quickBuildingCard.hidden = true;
+                if (Number.isInteger(node.userData.explodedFloor)) {
+                  setExplodedFloor(node.userData.explodedFloor);
+                  return;
+                }
+                const placeButton = document.querySelector(`.place-button[data-place="${node.userData.place}"]`);
+                if (placeButton) {
+                  activePlace = node.userData.place;
+                  document.querySelectorAll('.place-button').forEach(item => item.classList.toggle('active', item === placeButton));
+                  enterBuildingButton.classList.add('visible');
+                  document.getElementById('route-to-place').classList.add('visible');
+                  render();
+                  showExplodedBuilding(node.userData.place);
+                }
+              } else if (node && node.userData.buildingNumber) {
+                if (!showExplodedBuilding(node.userData.buildingKey)) {
+                  openQuickBuilding(node.userData.buildingNumber, node.position.x, node.position.z);
+                }
+              }
+            }
+          });
+          renderer.domElement.addEventListener('pointerdown', event => {
+            renderer.domElement._downX = event.clientX;
+            renderer.domElement._downY = event.clientY;
+          });
+          function focusPlace(key) {
+            const place = places[key];
+            if (!place) return;
+            cancelCameraAnimation();
+            const [x, , z] = place.position;
+            const startPosition = camera.position.clone();
+            const startTarget = controls.target.clone();
+            const endPosition = new THREE.Vector3(x + 20, 23, z + 23);
+            const endTarget = new THREE.Vector3(x, 1.2, z);
+            const startTime = performance.now();
+            function animateFocus(now) {
+              const progress = Math.min((now - startTime) / 750, 1);
+              const eased = progress * progress * (3 - 2 * progress);
+              camera.position.lerpVectors(startPosition, endPosition, eased);
+              controls.target.lerpVectors(startTarget, endTarget, eased);
+              if (progress < 1) requestAnimationFrame(animateFocus);
+            }
+            requestAnimationFrame(animateFocus);
+          }
+          function focusCampusBuilding(number) {
+            const building = campusBuildingSpecs[number];
+            if (!building) return;
+            const [x, , z] = building.position;
+            const target = new THREE.Vector3(x, building.height * .48, z);
+            const distance = Math.max(building.width * 2.4, building.depth * 3, building.height * 1.8, 24);
+            const position = target.clone().add(new THREE.Vector3(distance * .72, distance * .62, distance * .72));
+            quickBuildingCard.hidden = true;
+            closeExplodedBuilding();
+            animateCameraOrbit(target, position);
+            if (matchMedia('(max-width: 760px)').matches) setMapFocus(true);
+          }
+          document.querySelector('.building-shortcuts').addEventListener('click', event => {
+            const tourButton = event.target.closest('[data-building-tour]');
+            if (tourButton) {
+              focusCampusBuilding(tourButton.dataset.buildingTour);
+            }
+          });
+          window.focusCampusBuilding = focusCampusBuilding;
+          function focusRoute(curve) {
+            cancelCameraAnimation();
+            const routePoints = curve.getPoints(40);
+            const bounds = routePoints.reduce((result, point) => ({
+              minX: Math.min(result.minX, point.x),
+              maxX: Math.max(result.maxX, point.x),
+              minZ: Math.min(result.minZ, point.z),
+              maxZ: Math.max(result.maxZ, point.z)
+            }), { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity });
+            const centerX = (bounds.minX + bounds.maxX) / 2;
+            const centerZ = (bounds.minZ + bounds.maxZ) / 2;
+            const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
+            const width = bounds.maxX - bounds.minX;
+            const depth = bounds.maxZ - bounds.minZ;
+            const distance = Math.max(
+              width / (2 * Math.tan(halfFov) * camera.aspect),
+              depth / (2 * Math.tan(halfFov)),
+              30
+            ) * 1.25;
+            const endTarget = new THREE.Vector3(centerX, .4, centerZ);
+            const endPosition = new THREE.Vector3(centerX + distance * .5, distance * .72, centerZ + distance * .5);
+            const startPosition = camera.position.clone();
+            const startTarget = controls.target.clone();
+            const startTime = performance.now();
+            function animateRouteFocus(now) {
+              const progress = Math.min((now - startTime) / 850, 1);
+              const eased = progress * progress * (3 - 2 * progress);
+              camera.position.lerpVectors(startPosition, endPosition, eased);
+              controls.target.lerpVectors(startTarget, endTarget, eased);
+              if (progress < 1) requestAnimationFrame(animateRouteFocus);
+            }
+            requestAnimationFrame(animateRouteFocus);
+          }
+          window.focusPlace = focusPlace;
+          window.showCampusRoute = showRouteTo;
+          document.getElementById('zoom-in').addEventListener('click', () => {
+            animateCameraZoom(.88);
+          });
+          document.getElementById('zoom-out').addEventListener('click', () => {
+            animateCameraZoom(1.14);
+          });
+          document.getElementById('reset-camera').addEventListener('click', () => {
+            animateCameraTo(new THREE.Vector3(2, 1, -18), new THREE.Vector3(68, 108, 16), 900);
+            clearRoute();
+            closeExplodedBuilding();
+          });
+          let eveningMode = false;
+          let weatherMode = 'sunny';
+          let weatherEffect = null;
+          function applyWeatherAppearance() {
+            const backgrounds = {
+              sunny: eveningMode ? 0x292c5d : 0x9bcbe8,
+              rain: eveningMode ? 0x20283e : 0x9aafc5,
+              snow: eveningMode ? 0x30384f : 0xc8d9e8
+            };
+            scene.background.set(backgrounds[weatherMode]);
+            scene.fog.color.copy(scene.background);
+            sun.intensity = (eveningMode ? .55 : 1.85) * (weatherMode === 'rain' ? .58 : weatherMode === 'snow' ? .82 : 1);
+            campusLights.forEach(light => { light.intensity = eveningMode ? 9 : 0; });
+          }
+          function setWeather(mode) {
+            if (!['sunny', 'rain', 'snow'].includes(mode)) return;
+            weatherMode = mode;
+            if (weatherEffect) {
+              scene.remove(weatherEffect.object);
+              weatherEffect.geometry.dispose();
+              weatherEffect.material.dispose();
+              weatherEffect = null;
+            }
+            if (mode !== 'sunny') {
+              const count = mode === 'rain' ? 300 : 240;
+              const vertexCount = mode === 'rain' ? count * 2 : count;
+              const positions = new Float32Array(vertexCount * 3);
+              const velocities = new Float32Array(count);
+              for (let index = 0; index < count; index++) {
+                const x = Math.random() * 78 - 39;
+                const y = Math.random() * 34;
+                const z = Math.random() * 78 - 39;
+                velocities[index] = mode === 'rain' ? 12 + Math.random() * 9 : 1.5 + Math.random() * 2.2;
+                const offset = index * (mode === 'rain' ? 6 : 3);
+                positions[offset] = x;
+                positions[offset + 1] = y;
+                positions[offset + 2] = z;
+                if (mode === 'rain') {
+                  positions[offset + 3] = x + .12;
+                  positions[offset + 4] = y - .85;
+                  positions[offset + 5] = z + .12;
+                }
+              }
+              const geometry = new THREE.BufferGeometry();
+              geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+              const material = mode === 'rain'
+                ? new THREE.LineBasicMaterial({ color: 0xd9f2ff, transparent: true, opacity: .68, depthWrite: false })
+                : new THREE.PointsMaterial({ color: 0xffffff, size: .34, transparent: true, opacity: .92, depthWrite: false, sizeAttenuation: true });
+              const object = mode === 'rain'
+                ? new THREE.LineSegments(geometry, material)
+                : new THREE.Points(geometry, material);
+              object.renderOrder = 2;
+              scene.add(object);
+              weatherEffect = { mode, object, geometry, material, positions, velocities, count };
+            }
+            document.querySelectorAll('[data-weather]').forEach(button => {
+              button.setAttribute('aria-pressed', String(button.dataset.weather === mode));
+            });
+            document.getElementById('toggle-weather-menu').textContent =
+              `${mode === 'sunny' ? '☀️ แดดออก' : mode === 'rain' ? '🌧️ ฝนตก' : '❄️ หิมะตก'}`;
+            applyWeatherAppearance();
+            document.getElementById('weather-menu').hidden = true;
+            document.getElementById('toggle-weather-menu').setAttribute('aria-expanded', 'false');
+            showToast(mode === 'sunny' ? 'อากาศแจ่มใส ☀️' : mode === 'rain' ? 'ฝนกำลังตกในแคมปัส 🌧️' : 'หิมะกำลังตกในแคมปัส ❄️');
+          }
+          document.getElementById('toggle-weather-menu').addEventListener('click', event => {
+            const menu = document.getElementById('weather-menu');
+            menu.hidden = !menu.hidden;
+            event.currentTarget.setAttribute('aria-expanded', String(!menu.hidden));
+          });
+          document.getElementById('weather-menu').addEventListener('click', event => {
+            const button = event.target.closest('[data-weather]');
+            if (button) setWeather(button.dataset.weather);
+          });
+          document.getElementById('toggle-evening').addEventListener('click', event => {
+            eveningMode = !eveningMode;
+            applyWeatherAppearance();
+            document.getElementById('toggle-evening').textContent = eveningMode ? '☀️ กลางวัน' : '🌙 กลางคืน';
+            showToast(eveningMode ? 'เปิดบรรยากาศแคมปัสยามค่ำ 🌙' : 'กลับสู่บรรยากาศกลางวัน ☀️');
+          });
+          let previousTime = performance.now();
+          let animationFrameId = null;
+          let pageActive = true;
+          function stopAnimation() {
+            if (animationFrameId !== null) {
+              cancelAnimationFrame(animationFrameId);
+              animationFrameId = null;
+            }
+            previousTime = performance.now();
+          }
+          function startAnimation() {
+            if (!pageActive || document.hidden || animationFrameId !== null) return;
+            previousTime = performance.now();
+            animationFrameId = requestAnimationFrame(animate);
+          }
+          window.setCampusAnimationActive = active => {
+            pageActive = Boolean(active);
+            if (pageActive) startAnimation();
+            else stopAnimation();
+          };
+          document.addEventListener('visibilitychange', () => {
+            if (document.hidden) stopAnimation();
+            else startAnimation();
+          });
+          window.addEventListener('pagehide', () => {
+            pageActive = false;
+            stopAnimation();
+          });
+          window.addEventListener('pageshow', () => {
+            pageActive = true;
+            startAnimation();
+          });
+          function animate() {
+            animationFrameId = null;
+            if (!pageActive || document.hidden) return;
+            const now = performance.now();
+            const delta = Math.min((now - previousTime) / 1000, .05);
+            previousTime = now;
+            const time = now * .001;
+            if (weatherEffect) {
+              const { mode, positions, velocities, count, geometry } = weatherEffect;
+              const positionCount = mode === 'rain' ? 2 : 1;
+              for (let index = 0; index < count; index++) {
+                const offset = index * positionCount * 3;
+                positions[offset + 1] -= velocities[index] * delta;
+                if (mode === 'rain') {
+                  positions[offset] += delta * .8;
+                  positions[offset + 2] += delta * .35;
+                  positions[offset + 3] = positions[offset] + .12;
+                  positions[offset + 4] = positions[offset + 1] - .85;
+                  positions[offset + 5] = positions[offset + 2] + .12;
+                } else {
+                  positions[offset] += Math.sin(time + index) * delta * .35;
+                  positions[offset + 2] += Math.cos(time * .7 + index) * delta * .25;
+                }
+                if (positions[offset + 1] < -.5) {
+                  positions[offset] = Math.random() * 78 - 39;
+                  positions[offset + 1] = 30 + Math.random() * 6;
+                  positions[offset + 2] = Math.random() * 78 - 39;
+                  if (mode === 'rain') {
+                    positions[offset + 3] = positions[offset] + .12;
+                    positions[offset + 4] = positions[offset + 1] - .85;
+                    positions[offset + 5] = positions[offset + 2] + .12;
+                  }
+                }
+              }
+              geometry.attributes.position.needsUpdate = true;
+            }
+            Object.values(markerObjects).forEach((marker, index) => {
+              marker.children[1].position.y = 1 + Math.sin(time * 2.3 + index) * .16;
+            });
+            if (activeExplodedBuilding) {
+              activeExplodedBuilding.floors.forEach((floor, index) => {
+                const gap = activeExplodedBuilding.expanded ? 1.35 : 0;
+                const targetY = index * (activeExplodedBuilding.floorSpacing + gap) +
+                  (floor.userData.selected && activeExplodedBuilding.expanded ? .2 : 0);
+                floor.position.y += (targetY - floor.position.y) * Math.min(delta * 5, 1);
+                const targetScale = floor.userData.selected && activeExplodedBuilding.expanded ? 1.035 : 1;
+                const scaleStep = (targetScale - floor.scale.x) * Math.min(delta * 4, 1);
+                floor.scale.setScalar(floor.scale.x + scaleStep);
+              });
+            }
+            if (routeWalker) {
+              const walking = routeWalker.userData.progress < 1;
+              if (walking) {
+                routeWalker.userData.progress = Math.min(routeWalker.userData.progress + delta * .12, 1);
+                const progress = routeWalker.userData.progress;
+                const point = routeWalker.userData.curve.getPointAt(progress);
+                routeWalker.position.copy(point);
+                routeWalker.position.y += 1.7 + Math.sin(time * 5) * .08;
+              }
+            }
+            walkers.forEach(walker => moveWalker(walker, delta, time));
+            studyPartners.forEach((student, index) => {
+              student.head.rotation.x = -.16 + Math.sin(time * 1.1 + student.phase + index) * .08;
+              student.head.rotation.y = Math.sin(time * .7 + student.phase) * .22;
+              student.arms[0].rotation.x = Math.sin(time * 5 + index) * .035;
+              student.arms[1].rotation.x = Math.cos(time * 4.2 + index) * .045;
+              student.legs.forEach((thigh, legIndex) => {
+                thigh.rotation.x = Math.sin(time * .8 + legIndex + index) * .025;
+              });
+            });
+            rooftopFans.forEach((fan, index) => { fan.rotation.y += delta * (1.7 + index * .12); });
+            bus.position.x += shuttleDirection * delta * 2.5;
+            if (bus.position.x >= 38 || bus.position.x <= -38) {
+              shuttleDirection *= -1;
+              bus.rotation.y = shuttleDirection < 0 ? Math.PI : 0;
+            }
+            controls.update();
+            renderer.render(scene, camera);
+            animationFrameId = requestAnimationFrame(animate);
+          }
+          startAnimation();
+          window.addEventListener('resize', () => {
+            camera.aspect = innerWidth / innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(innerWidth, innerHeight);
+          });
+        } catch (error) {
+          console.error('Unable to initialize the 3D campus:', error);
+          document.getElementById('no-webgl').style.display = 'grid';
+        }
+      }
+      render();
+      initCampus();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,2864 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from './supabaseClient';
+import { 
+  Search, Plus, Compass, User, MapPin, Calendar, ArrowRight,
+  ArrowLeft, Send, Map, LogIn, LogOut, Users, Mail, Lock, 
+  MessageCircle, X, CheckCircle, Bell, Edit, Trash2, Clock, 
+  UserPlus, Check, ShieldAlert, Paperclip, LogOut as LeaveIcon,
+  BookOpen, Sparkles, GraduationCap, ChevronRight, Zap, Sun, Moon, Palette, Camera
+} from 'lucide-react';
+
+// --- AVATARS DATA ---
+const cartoonAvatars = [
+  { id: 'm1', gender: 'ชาย', url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23E0E7FF"/><circle cx="50" cy="40" r="22" fill="%23FDBA74"/><path d="M30,35 Q50,15 70,35 Q65,22 50,22 Q35,22 30,35 Z" fill="%231E293B"/><circle cx="43" cy="38" r="2.5" fill="%231E293B"/><circle cx="57" cy="38" r="2.5" fill="%231E293B"/><path d="M44,48 Q50,54 56,48" stroke="%23C2410C" stroke-width="2" fill="none"/><path d="M20,90 Q50,65 80,90 Z" fill="%234338CA"/></svg>' },
+  { id: 'm2', gender: 'ชาย', url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23FEF3C7"/><circle cx="50" cy="40" r="22" fill="%23FED7AA"/><path d="M28,32 Q50,10 72,32 Q60,18 50,18 Q40,18 28,32 Z" fill="%23475569"/><circle cx="43" cy="38" r="2.5" fill="%231E293B"/><circle cx="57" cy="38" r="2.5" fill="%231E293B"/><path d="M45,49 Q50,53 55,49" stroke="%23EA580C" stroke-width="2" fill="none"/><path d="M20,90 Q50,65 80,90 Z" fill="%23D97706"/></svg>' },
+  { id: 'm3', gender: 'ชาย', url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23DCFCE7"/><circle cx="50" cy="40" r="22" fill="%23FFEDD5"/><path d="M32,30 Q50,12 68,30 Q60,20 50,20 Q40,20 32,30 Z" fill="%230F172A"/><circle cx="43" cy="38" r="2.5" fill="%231E293B"/><circle cx="57" cy="38" r="2.5" fill="%231E293B"/><path d="M44,48 Q50,54 56,48" stroke="%23C2410C" stroke-width="2" fill="none"/><path d="M20,90 Q50,65 80,90 Z" fill="%23059669"/></svg>' },
+  { id: 'f1', gender: 'หญิง', url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23FCE7F3"/><circle cx="50" cy="42" r="21" fill="%23FED7AA"/><path d="M25,28 Q50,12 75,28 C80,50 75,65 72,70 Q50,22 28,70 C25,65 20,50 25,28 Z" fill="%23831843"/><circle cx="43" cy="40" r="2.5" fill="%231E293B"/><circle cx="57" cy="40" r="2.5" fill="%231E293B"/><path d="M44,50 Q50,56 56,50" stroke="%23BE185D" stroke-width="2" fill="none"/><path d="M22,90 Q50,68 78,90 Z" fill="%23DB2777"/></svg>' },
+  { id: 'f2', gender: 'หญิง', url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23F3E8FF"/><circle cx="50" cy="42" r="21" fill="%23FDBA74"/><path d="M24,30 Q50,10 76,30 C78,55 72,70 70,72 Q50,20 30,72 C28,70 22,55 24,30 Z" fill="%23312E81"/><circle cx="43" cy="40" r="2.5" fill="%231E293B"/><circle cx="57" cy="40" r="2.5" fill="%231E293B"/><path d="M44,50 Q50,55 56,50" stroke="%23C2410C" stroke-width="2" fill="none"/><path d="M22,90 Q50,68 78,90 Z" fill="%237C3AED"/></svg>' },
+  { id: 'f3', gender: 'หญิง', url: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23FFE4E6"/><circle cx="50" cy="42" r="21" fill="%23FFEDD5"/><path d="M25,26 Q50,8 75,26 C78,48 74,68 70,72 Q50,18 30,72 C26,68 22,48 25,26 Z" fill="%23881337"/><circle cx="43" cy="40" r="2.5" fill="%231E293B"/><circle cx="57" cy="38" r="2.5" fill="%231E293B"/><path d="M44,50 Q50,56 56,50" stroke="%23E11D48" stroke-width="2" fill="none"/><path d="M22,90 Q50,68 78,90 Z" fill="%23E11D48"/></svg>' }
+];
+
+// --- THEME COLOR CONFIG ---
+const themePresets = {
+  indigo: {
+    name: 'Indigo Night',
+    bg: 'from-indigo-900 via-slate-900 to-black',
+    cardGlow: 'shadow-indigo-500/20 border-indigo-500/30',
+    primaryBtn: 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30',
+    accentText: 'text-indigo-400',
+    dotBg: 'bg-indigo-600',
+    particleColor: '99, 102, 241'
+  },
+  emerald: {
+    name: 'Emerald Focus',
+    bg: 'from-emerald-950 via-slate-900 to-black',
+    cardGlow: 'shadow-emerald-500/20 border-emerald-500/30',
+    primaryBtn: 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30',
+    accentText: 'text-emerald-400',
+    dotBg: 'bg-emerald-600',
+    particleColor: '16, 185, 129'
+  },
+  amber: {
+    name: 'Cyber Amber',
+    bg: 'from-amber-950 via-slate-900 to-black',
+    cardGlow: 'shadow-amber-500/20 border-amber-500/30',
+    primaryBtn: 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/30',
+    accentText: 'text-amber-400',
+    dotBg: 'bg-amber-600',
+    particleColor: '245, 158, 11'
+  },
+  purple: {
+    name: 'Neon Purple',
+    bg: 'from-purple-950 via-slate-900 to-black',
+    cardGlow: 'shadow-purple-500/20 border-purple-500/30',
+    primaryBtn: 'bg-[#7C3AED] hover:bg-purple-700 shadow-purple-600/30',
+    accentText: 'text-purple-400',
+    dotBg: 'bg-purple-600',
+    particleColor: '168, 85, 247'
+  }
+};
+
+const getStudySessionDate = (dateTime) => {
+  const [rawDateLabel = '', rawTimeLabel = ''] = String(dateTime || '').split('|');
+  const dateLabel = rawDateLabel.trim();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let sessionDate = null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateLabel)) {
+    const [year, month, day] = dateLabel.split('-').map(Number);
+    sessionDate = new Date(year, month - 1, day);
+  } else if (dateLabel === 'วันนี้') {
+    sessionDate = new Date(today);
+  } else if (dateLabel === 'พรุ่งนี้') {
+    sessionDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  } else if (dateLabel === 'เสาร์นี้') {
+    const daysUntilSaturday = (6 - today.getDay() + 7) % 7;
+    sessionDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysUntilSaturday);
+  }
+  if (!sessionDate) return null;
+
+  const timeMatch = rawTimeLabel.match(/(\d{1,2}):(\d{2})/);
+  if (timeMatch) sessionDate.setHours(Number(timeMatch[1]), Number(timeMatch[2]), 0, 0);
+  else sessionDate.setHours(23, 59, 59, 999);
+  return sessionDate;
+};
+
+const getMessageDayKey = (createdAt) => {
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+};
+
+const formatMessageDayLabel = (createdAt) => {
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return '';
+  const today = new Date();
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  if (getMessageDayKey(createdAt) === getMessageDayKey(today)) return 'วันนี้';
+  if (getMessageDayKey(createdAt) === getMessageDayKey(yesterday)) return 'เมื่อวาน';
+  return date.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+};
+
+// Helper ฟังก์ชันสำหรับวาดรูปดาว 4 แฉก (Sparkle Star ✨)
+function drawSparkleStar(ctx, cx, cy, size, color, rotation = 0) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotation);
+  ctx.beginPath();
+  for (let i = 0; i < 4; i++) {
+    ctx.rotate(Math.PI / 2);
+    ctx.lineTo(0, size);
+    ctx.quadraticCurveTo(0, 0, size / 4, 0);
+  }
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+}
+
+function StudyBuddyBit({ className = '', mood = 'wave' }) {
+  return (
+    <svg viewBox="0 0 120 132" className={`bit-mascot bit-mascot--${mood} ${className}`} aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="bit-body-gradient" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#A5B4FC" />
+          <stop offset="100%" stopColor="#6366F1" />
+        </linearGradient>
+        <linearGradient id="bit-screen-gradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#26345D" />
+          <stop offset="100%" stopColor="#111A35" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="60" cy="119" rx="28" ry="5" fill="#312E81" opacity="0.12" className="bit-mascot__shadow" />
+      {mood === 'thinking' && (
+        <g className="bit-mascot__thought" aria-hidden="true">
+          <circle cx="101" cy="25" r="12" fill="#FEF3C7" stroke="#F59E0B" strokeWidth="2" />
+          <text x="101" y="31" textAnchor="middle" fill="#92400E" fontSize="18" fontWeight="800">?</text>
+        </g>
+      )}
+      {mood === 'cheer' && (
+        <g className="bit-mascot__confetti" aria-hidden="true" strokeLinecap="round">
+          <path d="m16 44 5-5m-7 15 7-1m84-18 5 5m-1 11 7 2" stroke="#F59E0B" strokeWidth="3" />
+          <path d="m24 27 2 4m70-7-2 5" stroke="#EC4899" strokeWidth="3" />
+          <path d="m16 91 5-4m81 8 5 4" stroke="#22D3EE" strokeWidth="3" />
+        </g>
+      )}
+      <g className="bit-mascot__float">
+        <path d="M60 31V21" stroke="#6366F1" strokeWidth="4" strokeLinecap="round" />
+        <circle cx="60" cy="16" r="7" fill="#FBBF24" className="bit-mascot__antenna" />
+        <circle cx="58" cy="14" r="2" fill="#FFF7CC" opacity="0.95" />
+
+        <path d="M31 70 19 76" stroke="#818CF8" strokeWidth="9" strokeLinecap="round" />
+        <circle cx="17" cy="77" r="6" fill="#C7D2FE" />
+        <g className="bit-mascot__wave-arm">
+          <path d="m88 69 13-9" stroke="#6366F1" strokeWidth="9" strokeLinecap="round" />
+          <circle cx="105" cy="57" r="7" fill="#FBBF24" />
+          <path d="m105 46 1-4m9 9 4-2m-13 18 1 4" stroke="#F59E0B" strokeWidth="2.5" strokeLinecap="round" />
+        </g>
+
+        <rect x="29" y="31" width="62" height="77" rx="22" fill="url(#bit-body-gradient)" stroke="#4F46E5" strokeWidth="2.5" />
+        <rect x="37" y="43" width="46" height="36" rx="13" fill="url(#bit-screen-gradient)" />
+        <g className="bit-mascot__eyes" fill="#E0E7FF">
+          <ellipse cx="50" cy="58" rx="3.2" ry="4.2" />
+          <ellipse cx="70" cy="58" rx="3.2" ry="4.2" />
+        </g>
+        <path d="M53 68q7 7 14 0" fill="none" stroke="#A5F3FC" strokeWidth="2.5" strokeLinecap="round" />
+        <circle cx="41" cy="69" r="2.5" fill="#F9A8D4" opacity="0.9" />
+        <circle cx="79" cy="69" r="2.5" fill="#F9A8D4" opacity="0.9" />
+        <rect x="43" y="86" width="34" height="11" rx="5.5" fill="#EEF2FF" opacity="0.96" />
+        <circle cx="52" cy="91.5" r="2" fill="#6366F1" />
+        <circle cx="60" cy="91.5" r="2" fill="#818CF8" />
+        <circle cx="68" cy="91.5" r="2" fill="#A5B4FC" />
+        <path d="M44 108v5m32-5v5" stroke="#4F46E5" strokeWidth="7" strokeLinecap="round" />
+        <path d="M38 115h12m22 0h12" stroke="#312E81" strokeWidth="3" strokeLinecap="round" opacity="0.2" />
+      </g>
+    </svg>
+  );
+}
+
+export default function App() {
+  // Lighting & Sound State
+  const [isLightsOff, setIsLightsOff] = useState(false);
+  const [isSparking, setIsSparking] = useState(false);
+  const [selectedTheme, setSelectedTheme] = useState('indigo');
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [bitMood, setBitMood] = useState('wave');
+  const [bitPhraseIndex, setBitPhraseIndex] = useState(0);
+
+  // Mouse Glow & Starfall Canvas Tracking
+  const mouseTrackingRef = useRef({ x: -200, y: -200, active: false, moved: false });
+  const customCursorRef = useRef(null);
+  const rainCanvasRef = useRef(null);
+  const starfallCanvasRef = useRef(null);
+
+  // Navigation & Search State
+  const [currentTab, setCurrentTab] = useState('home'); 
+  const [activeCategory, setActiveCategory] = useState('ทั้งหมด');
+  const [groupSortMode, setGroupSortMode] = useState('newest');
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Data States
+  const [studyGroups, setStudyGroups] = useState([]);
+  const [isGroupsLoading, setIsGroupsLoading] = useState(true);
+  const [groupsLoadError, setGroupsLoadError] = useState('');
+  const [myJoinedGroupIds, setMyJoinedGroupIds] = useState([]);
+  const [selectedGroup, setSelectedGroup] = useState(null);
+
+  // Profile & Auth
+  const savedAvatar = localStorage.getItem('user_profile_avatar');
+  const savedGender = localStorage.getItem('user_profile_gender') || 'ชาย';
+  const [user, setUser] = useState(null);
+  const [displayName, setDisplayName] = useState('');
+  const [faculty, setFaculty] = useState('');
+  const [selectedGender, setSelectedGender] = useState(savedGender);
+  const [currentUser, setCurrentUser] = useState({ name: 'Guest User', gender: savedGender, avatar: savedAvatar || cartoonAvatars[0].url });
+
+  // Auth Forms
+  const [authMode, setAuthMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [isSavedProfile, setIsSavedProfile] = useState(false);
+
+  // Social & Requests
+  const [friendRequests, setFriendRequests] = useState([]);
+  const [sentFriendRequests, setSentFriendRequests] = useState([]);
+  const [acceptedFriends, setAcceptedFriends] = useState([]);
+  const [toastNotification, setToastNotification] = useState(null);
+  const [actionToast, setActionToast] = useState(null);
+  const [hasUnreadNotification, setHasUnreadNotification] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [showQuickFriendModal, setShowQuickFriendModal] = useState(false);
+
+  // Group Form
+  const [isEditingGroup, setIsEditingGroup] = useState(false);
+  const [groupTitle, setGroupTitle] = useState('');
+  const [customSubject, setCustomSubject] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('ภาษาต่างประเทศ');
+  const [locationText, setLocationText] = useState('อาคาร 11 ชั้น 5 (สำนักหอสมุด SPU)');
+  const [groupDescription, setGroupDescription] = useState('');
+  const [groupDate, setGroupDate] = useState('');
+  const [groupTime, setGroupTime] = useState('13:00 - 15:00 น.');
+  const [maxMembersInput, setMaxMembersInput] = useState(5);
+
+  // Group Members
+  const [groupMembers, setGroupMembers] = useState([]);
+  const [allPendingRequests, setAllPendingRequests] = useState([]);
+  const [showMemberListModal, setShowMemberListModal] = useState(false);
+
+  // Chats
+  const [roomChatMessages, setRoomChatMessages] = useState([]);
+  const [roomChatMsg, setRoomChatMsg] = useState('');
+  const [isRoomChatLoading, setIsRoomChatLoading] = useState(true);
+  const [roomChatLoadError, setRoomChatLoadError] = useState('');
+  const [animatedRoomMessageId, setAnimatedRoomMessageId] = useState(null);
+  const [isRoomSendAnimating, setIsRoomSendAnimating] = useState(false);
+  const [newRoomMessageMarkerId, setNewRoomMessageMarkerId] = useState(null);
+  const [newRoomMessagesCount, setNewRoomMessagesCount] = useState(0);
+  const [friendSearchTerm, setFriendSearchTerm] = useState('');
+  const [searchedFriends, setSearchedFriends] = useState([]);
+  const [isSearchingRealtime, setIsSearchingRealtime] = useState(false);
+  const [activePrivateMember, setActivePrivateMember] = useState(null);
+  const [privateMessages, setPrivateMessages] = useState([]);
+  const [privateMsgInput, setPrivateMsgInput] = useState('');
+  const [recentDMMessages, setRecentDMMessages] = useState({});
+  const [recentGroupMessages, setRecentGroupMessages] = useState({});
+
+  // Refs & Tracking
+  const chatEndRef = useRef(null);
+  const roomChatContainerRef = useRef(null);
+  const roomChatInputRef = useRef(null);
+  const roomChatAtBottomRef = useRef(true);
+  const unseenRoomMessageIdsRef = useRef(new Set());
+  const privateChatContainerRef = useRef(null);
+  const homeSearchInputRef = useRef(null);
+  const readMessageIdsRef = useRef(new Set(JSON.parse(localStorage.getItem('read_msg_ids') || '[]')));
+  const actionToastTimerRef = useRef(null);
+  const avatarFileInputRef = useRef(null);
+
+  const notifyUser = (message, type = null) => {
+    const messageText = String(message);
+    const resolvedType = type || (
+      /ไม่สำเร็จ|ข้อผิดพลาด|กรุณา|ไม่สามารถ|ถูกปฏิเสธ|error|failed/i.test(messageText)
+        ? 'error'
+        : /สำเร็จ|เรียบร้อย/.test(messageText)
+          ? 'success'
+          : 'info'
+    );
+
+    if (actionToastTimerRef.current) window.clearTimeout(actionToastTimerRef.current);
+    if (resolvedType === 'success') {
+      setBitMood('cheer');
+      setBitPhraseIndex(3);
+    } else if (resolvedType === 'error') {
+      setBitMood('thinking');
+      setBitPhraseIndex(2);
+    } else {
+      setBitMood('wave');
+    }
+    setActionToast({ message: messageText, type: resolvedType });
+    actionToastTimerRef.current = window.setTimeout(() => {
+      setActionToast(null);
+      setBitMood('wave');
+    }, resolvedType === 'error' ? 6500 : 4200);
+  };
+
+  const dismissActionToast = () => {
+    if (actionToastTimerRef.current) window.clearTimeout(actionToastTimerRef.current);
+    setActionToast(null);
+    setBitMood('wave');
+  };
+
+  useEffect(() => () => {
+    if (actionToastTimerRef.current) window.clearTimeout(actionToastTimerRef.current);
+  }, []);
+
+  // 🔊 WEB AUDIO SYNTHESIZER: เสียงไฟช็อต
+  const playElectricZapSound = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+
+      const bufferSize = ctx.sampleRate * 0.15; 
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 2500;
+      filter.Q.value = 3;
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+
+      noise.start();
+      noise.stop(ctx.currentTime + 0.15);
+    } catch (e) {
+      console.log('Audio Context Error:', e);
+    }
+  };
+
+  const handleToggleLights = () => {
+    playElectricZapSound();
+    setIsSparking(true);
+    setTimeout(() => setIsSparking(false), 300);
+    setIsLightsOff(prev => !prev);
+  };
+
+  const currentThemeObj = themePresets[selectedTheme] || themePresets.indigo;
+
+  // 🌧️ 1. RAIN ANIMATION ENGINE (ตกตลอดเวลา)
+  useEffect(() => {
+    if (user) return;
+    const canvas = rainCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    let animationFrameId;
+    let width = (canvas.width = canvas.parentElement.clientWidth);
+    let height = (canvas.height = canvas.parentElement.clientHeight);
+
+    const handleResize = () => {
+      if (!canvas.parentElement) return;
+      width = canvas.width = canvas.parentElement.clientWidth;
+      height = canvas.height = canvas.parentElement.clientHeight;
+    };
+    window.addEventListener('resize', handleResize);
+
+    const drops = Array.from({ length: 50 }).map(() => ({
+      x: Math.random() * width,
+      y: Math.random() * height,
+      length: Math.random() * 20 + 12,
+      speed: Math.random() * 7 + 5,
+      opacity: Math.random() * 0.4 + 0.1
+    }));
+
+    const renderRain = () => {
+      ctx.clearRect(0, 0, width, height);
+      ctx.strokeStyle = isLightsOff ? 'rgba(255, 255, 255, 0.35)' : 'rgba(99, 102, 241, 0.3)';
+      ctx.lineWidth = 1.2;
+      ctx.lineCap = 'round';
+
+      drops.forEach((drop) => {
+        ctx.beginPath();
+        ctx.moveTo(drop.x, drop.y);
+        ctx.lineTo(drop.x - 1, drop.y + drop.length);
+        ctx.stroke();
+
+        drop.y += drop.speed;
+        drop.x -= 0.5;
+
+        if (drop.y > height) {
+          drop.y = -drop.length;
+          drop.x = Math.random() * width;
+        }
+      });
+      animationFrameId = requestAnimationFrame(renderRain);
+    };
+
+    renderRain();
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [user, isLightsOff]);
+
+  // ✨ 2. STARFALL & SPARKLE DUST MOUSE ENGINE (ดวงดาว 4 แฉก + ละอองละลายตามมือ)
+  useEffect(() => {
+    if (user) return;
+    const canvas = starfallCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    let animFrameId;
+    let particles = [];
+    let width = (canvas.width = canvas.parentElement.clientWidth);
+    let height = (canvas.height = canvas.parentElement.clientHeight);
+
+    const handleResize = () => {
+      if (!canvas.parentElement) return;
+      width = canvas.width = canvas.parentElement.clientWidth;
+      height = canvas.height = canvas.parentElement.clientHeight;
+    };
+    window.addEventListener('resize', handleResize);
+
+    const renderStarfall = () => {
+      ctx.clearRect(0, 0, width, height);
+
+      // เมื่อขยับเมาส์ สปอว์นละอองดาว 4 แฉกและฝุ่นดาวระยิบระยับ
+      const mouse = mouseTrackingRef.current;
+      if (mouse.active && mouse.moved && mouse.x > 0 && mouse.y > 0) {
+        mouse.moved = false;
+        for (let i = 0; i < 2; i++) {
+          particles.push({
+            x: mouse.x + (Math.random() * 16 - 8),
+            y: mouse.y + (Math.random() * 16 - 8),
+            vx: (Math.random() - 0.5) * 1.5,
+            vy: (Math.random() - 0.5) * 1.5 + 0.5,
+            size: Math.random() * 7 + 4,
+            alpha: 1,
+            rotation: Math.random() * Math.PI,
+            rotSpeed: (Math.random() - 0.5) * 0.08,
+            isSparkle: Math.random() > 0.4
+          });
+        }
+      }
+
+      // วาดและอัปเดตสถานะของดาวแต่ละดวง
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.alpha -= 0.025;
+        p.rotation += p.rotSpeed;
+
+        if (p.alpha <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+
+        if (p.isSparkle) {
+          // ดาว 4 แฉก (Sparkle Star)
+          const starColor = `rgba(${themePresets[selectedTheme].particleColor}, ${p.alpha})`;
+          drawSparkleStar(ctx, p.x, p.y, p.size, starColor, p.rotation);
+        } else {
+          // ละอองฝุ่นดาวเรืองแสง (Sparkle Dust)
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size / 3, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha})`;
+          ctx.shadowBlur = 8;
+          ctx.shadowColor = `rgba(${themePresets[selectedTheme].particleColor}, 1)`;
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      animFrameId = requestAnimationFrame(renderStarfall);
+    };
+
+    renderStarfall();
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animFrameId);
+    };
+  }, [user, selectedTheme]);
+
+  const handleMouseMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    mouseTrackingRef.current = { x, y, active: true, moved: true };
+
+    if (customCursorRef.current) {
+      customCursorRef.current.style.transform =
+        `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+      customCursorRef.current.style.opacity = '1';
+    }
+  };
+
+  const markMessageAsRead = (msgId) => {
+    if (!msgId) return;
+    readMessageIdsRef.current.add(msgId);
+    localStorage.setItem('read_msg_ids', JSON.stringify(Array.from(readMessageIdsRef.current)));
+  };
+
+  const handleIncomingRoomMessage = (message) => {
+    const isOwnMessage = message.sender_name === currentUser.name;
+    const shouldFollowLatest = roomChatAtBottomRef.current || isOwnMessage;
+    setRoomChatMessages(prev => {
+      if (prev.some(existing => String(existing.id) === String(message.id))) return prev;
+      return [...prev, message];
+    });
+
+    if (shouldFollowLatest) {
+      markMessageAsRead(message.id);
+      setTimeout(() => scrollToBottom(true, roomChatContainerRef), 20);
+      return;
+    }
+
+    const messageId = String(message.id);
+    if (!unseenRoomMessageIdsRef.current.has(messageId)) {
+      unseenRoomMessageIdsRef.current.add(messageId);
+      setNewRoomMessagesCount(unseenRoomMessageIdsRef.current.size);
+    }
+    setNewRoomMessageMarkerId(currentId => currentId || messageId);
+  };
+
+  const handleRoomChatScroll = (event) => {
+    const container = event.currentTarget;
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    roomChatAtBottomRef.current = isAtBottom;
+    if (!isAtBottom || unseenRoomMessageIdsRef.current.size === 0) return;
+    unseenRoomMessageIdsRef.current.forEach(markMessageAsRead);
+    unseenRoomMessageIdsRef.current.clear();
+    setNewRoomMessagesCount(0);
+    setNewRoomMessageMarkerId(null);
+  };
+
+  const formatTime = (isoString) => {
+    if (!isoString) return 'เมื่อสักครู่';
+    const date = new Date(isoString);
+    return date.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+  };
+
+  const isHost = (group = selectedGroup) => {
+    if (!group) return false;
+    const isIdMatch = user?.id && String(group.host_id) === String(user.id);
+    const isEmailMatch = user?.email && String(group.host_id) === String(user.email);
+    return Boolean(isIdMatch || isEmailMatch);
+  };
+
+  const isApprovedMember = (group = selectedGroup) => {
+    if (!group) return false;
+    if (isHost(group)) return true;
+    const currentUserId = user?.id || user?.email;
+    return groupMembers.some(m => 
+      (m.user_id === currentUserId || m.user_name === currentUser.name) && m.status === 'accepted'
+    );
+  };
+
+  const scrollToBottom = (force = false, containerRef = null) => {
+    if (!containerRef?.current) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
+    if (isAtBottom || force) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  useEffect(() => {
+    if (currentTab === 'private_chat') setTimeout(() => scrollToBottom(true, privateChatContainerRef), 30);
+  }, [currentTab, activePrivateMember, privateMessages]);
+
+  useEffect(() => {
+    if (currentTab === 'room_chat') setTimeout(() => scrollToBottom(false, roomChatContainerRef), 30);
+  }, [currentTab, selectedGroup, roomChatMessages]);
+
+  const fetchGroupsFromSupabase = async () => {
+    try {
+      const { data, error } = await supabase.from('study_groups').select('*').order('created_at', { ascending: false });
+      if (error) {
+        setGroupsLoadError(error.message);
+        return;
+      }
+      setGroupsLoadError('');
+      if (data) {
+        setStudyGroups(data);
+
+        const userId = user?.id || user?.email || currentUser.name;
+        if (userId) {
+          const { data: myMemberships } = await supabase.from('group_members').select('group_id').or(`user_id.eq.${userId},user_name.eq.${currentUser.name}`).eq('status', 'accepted');
+          if (myMemberships) {
+            const approvedIds = myMemberships.map(m => m.group_id);
+            setMyJoinedGroupIds(prev => Array.from(new Set([...prev, ...approvedIds])));
+          }
+        }
+
+        data.forEach(async (g) => {
+          const { data: lastMsgs } = await supabase.from('group_messages').select('*').eq('group_id', g.id).order('created_at', { ascending: false }).limit(1);
+          if (lastMsgs && lastMsgs[0]) {
+            const cleanText = lastMsgs[0].text?.startsWith('[IMAGE]:') ? '📷 [ส่งรูปภาพ]' : lastMsgs[0].text;
+            setRecentGroupMessages(prev => ({
+              ...prev,
+              [g.id]: {
+                text: `${lastMsgs[0].sender_name}: ${cleanText}`,
+                time: formatTime(lastMsgs[0].created_at),
+                timestamp: new Date(lastMsgs[0].created_at).getTime()
+              }
+            }));
+          }
+        });
+      }
+    } catch (error) {
+      setGroupsLoadError(error?.message || 'เกิดข้อผิดพลาดขณะโหลดกลุ่มติว');
+    } finally {
+      setIsGroupsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchGroupsFromSupabase();
+    const groupsChannel = supabase.channel('public-study-groups-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'study_groups' }, fetchGroupsFromSupabase)
+      .subscribe();
+    return () => { supabase.removeChannel(groupsChannel); };
+  }, [user, currentUser.name]);
+
+  const fetchAllPendingRequestsForHost = async () => {
+    const { data } = await supabase.from('group_members').select('*, study_groups(title)').eq('status', 'pending');
+    if (data && studyGroups.length > 0) {
+      const myHostedGroupIds = studyGroups.filter(g => isHost(g)).map(g => String(g.id));
+      const filtered = data.filter(m => myHostedGroupIds.includes(String(m.group_id)));
+      setAllPendingRequests(filtered);
+    } else {
+      setAllPendingRequests([]);
+    }
+  };
+
+  useEffect(() => {
+    fetchAllPendingRequestsForHost();
+  }, [user, currentUser.name, studyGroups]);
+
+  const showToast = (senderKey, title, message, notificationMeta = {}) => {
+    setToastNotification({ title, message, ...notificationMeta });
+    setHasUnreadNotification(true);
+    setNotifications(prev => {
+      const existingIndex = prev.findIndex(n => n.senderKey === senderKey);
+      let updatedList = [...prev];
+      if (existingIndex !== -1) {
+        updatedList[existingIndex] = { ...updatedList[existingIndex], ...notificationMeta, desc: message, time: 'เมื่อสักครู่', read: false };
+      } else {
+        updatedList = [{ id: Date.now().toString(), senderKey, title, desc: message, time: 'เมื่อสักครู่', read: false, ...notificationMeta }, ...prev];
+      }
+      return updatedList.slice(0, 6);
+    });
+    setTimeout(() => setToastNotification(null), 5000);
+  };
+
+  const syncProfileToSupabase = async (userData, profileData) => {
+    if (!userData) return;
+    await supabase.from('profiles').upsert({
+      id: userData.id, email: userData.email, display_name: profileData.name,
+      gender: profileData.gender, avatar: profileData.avatar, faculty: faculty || 'นักศึกษา SPU', updated_at: new Date().toISOString()
+    });
+  };
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) { setUser(session.user); fetchProfileFromSupabase(session.user); }
+      else setUser(null);
+    });
+    const { data: authListener } = supabase.auth.onAuthStateChange((_e, session) => {
+      if (session?.user) { setUser(session.user); fetchProfileFromSupabase(session.user); }
+      else setUser(null);
+    });
+    return () => authListener.subscription.unsubscribe();
+  }, []);
+
+  const fetchProfileFromSupabase = async (authUser) => {
+    const { data } = await supabase.from('profiles').select('*').eq('id', authUser.id).single();
+    if (data) {
+      const name = data.display_name || authUser.email.split('@')[0];
+      setDisplayName(name); setSelectedGender(data.gender || 'ชาย'); setFaculty(data.faculty || '');
+      const userObj = { name, gender: data.gender || 'ชาย', avatar: data.avatar || cartoonAvatars[0].url };
+      setCurrentUser(userObj);
+      localStorage.setItem('user_profile_avatar', userObj.avatar);
+      localStorage.setItem('user_profile_gender', userObj.gender);
+    } else {
+      const defaultName = authUser.user_metadata?.full_name || authUser.email.split('@')[0];
+      setDisplayName(defaultName);
+      const userObj = { name: defaultName, gender: savedGender, avatar: savedAvatar || cartoonAvatars[0].url };
+      setCurrentUser(userObj); syncProfileToSupabase(authUser, userObj);
+    }
+  };
+
+  const fetchFriendStatus = async () => {
+    if (!user) return;
+    
+    const { data: reqs } = await supabase.from('friend_requests').select('*').eq('receiver_id', user.id).eq('status', 'pending');
+    if (reqs) setFriendRequests(reqs);
+    const { data: sentReqs } = await supabase.from('friend_requests').select('*').eq('sender_id', user.id).eq('status', 'pending');
+    if (sentReqs) setSentFriendRequests(sentReqs);
+
+    const { data: sentAccepted } = await supabase.from('friend_requests').select('receiver_id').eq('sender_id', user.id).eq('status', 'accepted');
+    const { data: recvAccepted } = await supabase.from('friend_requests').select('sender_id').eq('receiver_id', user.id).eq('status', 'accepted');
+
+    const { data: sentMsgs } = await supabase.from('direct_messages').select('receiver_id').eq('sender_id', user.id);
+    const { data: recvMsgs } = await supabase.from('direct_messages').select('sender_id').eq('receiver_id', user.id);
+
+    const partnerIdsSet = new Set();
+    if (sentAccepted) sentAccepted.forEach(a => partnerIdsSet.add(a.receiver_id));
+    if (recvAccepted) recvAccepted.forEach(a => partnerIdsSet.add(a.sender_id));
+    if (sentMsgs) sentMsgs.forEach(m => partnerIdsSet.add(m.receiver_id));
+    if (recvMsgs) recvMsgs.forEach(m => partnerIdsSet.add(m.sender_id));
+
+    const friendIds = Array.from(partnerIdsSet).filter(id => id && id !== user.id);
+
+    if (friendIds.length > 0) {
+      const { data: profiles } = await supabase.from('profiles').select('*').in('id', friendIds);
+      if (profiles) {
+        setAcceptedFriends(profiles);
+        profiles.forEach(async (f) => {
+          const { data: msgs } = await supabase.from('direct_messages').select('*')
+            .or(`and(sender_id.eq.${user.id},receiver_id.eq.${f.id}),and(sender_id.eq.${f.id},receiver_id.eq.${user.id})`)
+            .order('created_at', { ascending: false }).limit(1);
+
+          if (msgs && msgs[0]) {
+            const last = msgs[0];
+            const isFromMe = last.sender_id === user.id;
+            const cleanText = last.text?.startsWith('[IMAGE]:') ? '📷 [ส่งรูปภาพ]' : last.text;
+            const isAlreadyRead = readMessageIdsRef.current.has(last.id) || isFromMe;
+
+            setRecentDMMessages(prev => ({
+              ...prev, 
+              [f.id]: { 
+                text: isFromMe ? `คุณ: ${cleanText}` : cleanText, 
+                time: formatTime(last.created_at), 
+                unread: !isAlreadyRead, 
+                timestamp: new Date(last.created_at).getTime() 
+              }
+            }));
+          }
+        });
+      }
+    } else {
+      setAcceptedFriends([]);
+    }
+  };
+
+  useEffect(() => { fetchFriendStatus(); }, [user]);
+
+  // GLOBAL REALTIME HUB
+  useEffect(() => {
+    if (!user) return;
+    const globalChannel = supabase.channel('global-app-realtime-hub-fixed-v9')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, async (payload) => {
+        const newMsg = payload.new;
+        const isFromMe = newMsg.sender_id === user.id;
+        const targetFriendId = isFromMe ? newMsg.receiver_id : newMsg.sender_id;
+        
+        setAcceptedFriends(prev => {
+          const exists = prev.some(f => f.id === targetFriendId);
+          if (!exists) {
+            supabase.from('profiles').select('*').eq('id', targetFriendId).single().then(({ data: newProfile }) => {
+              if (newProfile) setAcceptedFriends(current => [...current, newProfile]);
+            });
+          }
+          return prev;
+        });
+
+        const cleanText = newMsg.text?.startsWith('[IMAGE]:') ? '📷 [ส่งรูปภาพ]' : newMsg.text;
+        const isCurrentlyChatting = currentTab === 'private_chat' && activePrivateMember?.id === targetFriendId;
+
+        if (isCurrentlyChatting || isFromMe) {
+          markMessageAsRead(newMsg.id);
+        }
+
+        const shouldMarkUnread = !isFromMe && !isCurrentlyChatting && !readMessageIdsRef.current.has(newMsg.id);
+
+        setRecentDMMessages(prev => ({
+          ...prev,
+          [targetFriendId]: { 
+            text: isFromMe ? `คุณ: ${cleanText}` : cleanText, 
+            time: formatTime(newMsg.created_at), 
+            unread: shouldMarkUnread, 
+            timestamp: new Date(newMsg.created_at).getTime() || Date.now()
+          }
+        }));
+
+        if (shouldMarkUnread) {
+          showToast(`dm-${newMsg.sender_id}`, `💬 ข้อความใหม่จาก ${newMsg.sender_name}`, cleanText, { type: 'dm', targetUser: { id: newMsg.sender_id, name: newMsg.sender_name, avatar: cartoonAvatars[0].url } });
+        }
+      })
+
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests' }, (payload) => {
+        fetchFriendStatus();
+        const req = payload.new;
+        if (req && req.receiver_id === user.id && req.status === 'pending') {
+          showToast(`friend-req-${req.id}`, `👋 คำขอเป็นเพื่อนใหม่`, `${req.sender_name} ได้ส่งคำขอเป็นเพื่อนถึงคุณ`);
+        } else if (req && (req.sender_id === user.id || req.receiver_id === user.id) && req.status === 'accepted') {
+          showToast(`friend-acc-${req.id}`, `🎉 ตอบรับคำขอเป็นเพื่อนแล้ว`, `คุณและเพื่อนสามารถแชตส่วนตัวกันได้แล้ว!`);
+        }
+      })
+
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_members' }, async (payload) => {
+        fetchAllPendingRequestsForHost();
+        const m = payload.new;
+        const currentUserId = user?.id || user?.email;
+
+        if (m && (m.user_id === currentUserId || m.user_name === currentUser.name)) {
+          if (m.status === 'accepted') {
+            setMyJoinedGroupIds(prev => Array.from(new Set([...prev, m.group_id])));
+            
+            let approvedGroup = studyGroups.find(g => String(g.id) === String(m.group_id));
+            if (!approvedGroup) {
+              const { data: fetchedG } = await supabase.from('study_groups').select('*').eq('id', m.group_id).single();
+              if (fetchedG) approvedGroup = fetchedG;
+            }
+
+            if (approvedGroup) {
+              showToast(`approved-${m.group_id}`, `🎉 เข้าสู่ห้องติวสำเร็จ!`, `หัวหน้าห้องอนุมัติคุณเข้าสู่ "${approvedGroup.title}" เรียบร้อยแล้ว กดที่นี่เพื่อเข้าห้องติวได้เลย`, { type: 'group', groupId: m.group_id, groupObj: approvedGroup });
+            }
+          }
+        }
+
+        if (selectedGroup) {
+          supabase.from('group_members').select('*').eq('group_id', selectedGroup.id).then(({ data: members }) => {
+            if (members) setGroupMembers(members);
+          });
+        }
+
+        if (m && m.status === 'pending') {
+          const tg = studyGroups.find(g => String(g.id) === String(m.group_id));
+          if (isHost(tg)) {
+            showToast(`join-req-${m.id}`, `🙋‍♂ คำขอเข้าร่วมกลุ่มติวใหม่`, `${m.user_name} ต้องการเข้าร่วมห้อง "${tg?.title || ''}"`, { type: 'join_request', memberReqId: m.id, groupId: m.group_id, userName: m.user_name, isHandled: false });
+          }
+        }
+      })
+
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_messages' }, (payload) => {
+        const gMsg = payload.new;
+        const inRoom = currentTab === 'room_chat' && String(selectedGroup?.id) === String(gMsg.group_id);
+        const isFromMe = gMsg.sender_name === currentUser.name;
+        const cleanText = gMsg.text?.startsWith('[IMAGE]:') ? '📷 [ส่งรูปภาพ]' : gMsg.text;
+
+        const shouldMarkUnread = !isFromMe && !inRoom && !readMessageIdsRef.current.has(gMsg.id);
+        
+        setRecentGroupMessages(prev => ({
+          ...prev,
+          [gMsg.group_id]: { 
+            text: `${gMsg.sender_name}: ${cleanText}`, 
+            time: formatTime(gMsg.created_at), 
+            unread: shouldMarkUnread, 
+            timestamp: new Date(gMsg.created_at).getTime() || Date.now() 
+          }
+        }));
+        
+        if (shouldMarkUnread) {
+          const tg = studyGroups.find(g => String(g.id) === String(gMsg.group_id));
+          showToast(`group-${gMsg.group_id}`, `📢 ข้อความกลุ่มติวใหม่ (${gMsg.sender_name})`, cleanText, { type: 'group', groupId: gMsg.group_id, groupObj: tg });
+        }
+      }).subscribe();
+
+    return () => { supabase.removeChannel(globalChannel); };
+  }, [user, currentUser.name, currentTab, activePrivateMember, selectedGroup, studyGroups]);
+
+  // Realtime Friends Search
+  const activeSearchQuery = friendSearchTerm || searchTerm;
+  useEffect(() => {
+    if (!activeSearchQuery.trim()) { setSearchedFriends([]); return; }
+    const timer = setTimeout(async () => {
+      setIsSearchingRealtime(true);
+      const query = activeSearchQuery.trim();
+      let { data, error } = await supabase.rpc('search_profiles', { search_term: query });
+
+      // Keep friend search working with the current database until the RLS
+      // migration installs search_profiles. Once installed, the RPC is used.
+      if (error?.code === 'PGRST202') {
+        ({ data, error } = await supabase
+          .from('profiles')
+          .select('id,display_name,email,avatar,faculty')
+          .or(`display_name.ilike.%${query}%,email.ilike.%${query}%`)
+          .limit(10));
+      }
+
+      if (error) {
+        console.error('Unable to search profiles:', error);
+        setSearchedFriends([]);
+      } else if (data) {
+        setSearchedFriends(data
+          .filter(p => p.id !== user?.id)
+          .map(p => ({
+            id: p.id,
+            name: (p.display_name || p.email?.split('@')[0] || 'นักศึกษา').replace(/\s*\(นักศึกษา SPU\)/g, ''),
+            faculty: p.faculty || 'นักศึกษา SPU',
+            avatar: p.avatar || cartoonAvatars[0].url,
+            email: p.email || ''
+          })));
+      }
+      setIsSearchingRealtime(false);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [activeSearchQuery, user]);
+
+  // ROOM CHAT REALTIME LISTENER
+  useEffect(() => {
+    if (!selectedGroup?.id || currentTab !== 'room_chat') return;
+    setRecentGroupMessages(prev => ({ ...prev, [selectedGroup.id]: { ...prev[selectedGroup.id], unread: false } }));
+    setRoomChatMessages([]);
+    setRoomChatLoadError('');
+    setNewRoomMessageMarkerId(null);
+    setNewRoomMessagesCount(0);
+    unseenRoomMessageIdsRef.current.clear();
+    roomChatAtBottomRef.current = true;
+    
+    const fetchGroupData = async () => {
+      setIsRoomChatLoading(true);
+      try {
+        const { data: msgs, error: messagesError } = await supabase.from('group_messages').select('*').eq('group_id', selectedGroup.id).order('created_at', { ascending: true });
+        if (messagesError) throw messagesError;
+        const loadedMessages = msgs || [];
+        loadedMessages.forEach(m => markMessageAsRead(m.id));
+        setRoomChatMessages(loadedMessages);
+        setTimeout(() => scrollToBottom(true, roomChatContainerRef), 20);
+
+        const { data: members } = await supabase.from('group_members').select('*').eq('group_id', selectedGroup.id);
+        if (members) setGroupMembers(members);
+      } catch (error) {
+        setRoomChatLoadError(error?.message || 'โหลดข้อความไม่สำเร็จ');
+      } finally {
+        setIsRoomChatLoading(false);
+      }
+    };
+
+    fetchGroupData();
+
+    const roomChannel = supabase.channel(`room-realtime-${selectedGroup.id}-${Date.now()}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_messages' }, (payload) => {
+        const newMsg = payload.new;
+        if (String(newMsg.group_id) === String(selectedGroup.id)) {
+          handleIncomingRoomMessage(newMsg);
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_members' }, (payload) => {
+        if (payload.new && String(payload.new.group_id) === String(selectedGroup.id)) {
+          fetchGroupData();
+        }
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          fetchGroupData();
+        }
+      });
+
+    return () => { supabase.removeChannel(roomChannel); };
+  }, [selectedGroup?.id, currentTab]);
+
+  // PRIVATE CHAT REALTIME LISTENER
+  useEffect(() => {
+    if (!activePrivateMember?.id || !user || currentTab !== 'private_chat') return;
+    
+    setRecentDMMessages(prev => ({ ...prev, [activePrivateMember.id]: { ...prev[activePrivateMember.id], unread: false } }));
+    
+    const fetchDMs = async () => {
+      const { data, error } = await supabase.from('direct_messages').select('*')
+        .or(`and(sender_id.eq.${user.id},receiver_id.eq.${activePrivateMember.id}),and(sender_id.eq.${activePrivateMember.id},receiver_id.eq.${user.id})`)
+        .order('created_at', { ascending: true });
+      
+      if (!error && data) {
+        data.forEach(m => markMessageAsRead(m.id));
+        setPrivateMessages(data);
+        setTimeout(() => scrollToBottom(true, privateChatContainerRef), 30);
+      }
+    };
+    
+    fetchDMs();
+
+    const dmChannel = supabase.channel(`direct-messages-realtime-${user.id}-${activePrivateMember.id}-${Date.now()}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, (payload) => {
+        const newMsg = payload.new;
+        if ((newMsg.sender_id === user.id && newMsg.receiver_id === activePrivateMember.id) || 
+            (newMsg.sender_id === activePrivateMember.id && newMsg.receiver_id === user.id)) {
+          markMessageAsRead(newMsg.id);
+          setPrivateMessages(prev => {
+            if (prev.some(m => String(m.id) === String(newMsg.id))) return prev;
+            return [...prev, newMsg];
+          });
+          setTimeout(() => scrollToBottom(true, privateChatContainerRef), 20);
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(dmChannel); };
+  }, [activePrivateMember, user, currentTab]);
+
+  // Actions
+  const handleSendFriendRequest = async (targetUser) => {
+    if (!user) return;
+    const { error } = await supabase.from('friend_requests').insert([{ sender_id: user.id, sender_name: currentUser.name, receiver_id: targetUser.id, receiver_name: targetUser.name, status: 'pending' }]);
+    if (error) notifyUser('ส่งคำขอไม่สำเร็จ: ' + error.message);
+    else { notifyUser(`ส่งคำขอเป็นเพื่อนถึง ${targetUser.name} เรียบร้อยแล้ว!`); fetchFriendStatus(); }
+  };
+
+  const handleAcceptFriendRequest = async (request) => {
+    const { error } = await supabase.from('friend_requests').update({ status: 'accepted' }).eq('id', request.id);
+    if (!error) { notifyUser(`ตอบรับคำขอจาก ${request.sender_name} เรียบร้อยแล้ว!`); fetchFriendStatus(); }
+  };
+
+  const handleSendPrivateMsg = async (attachedImage = null) => {
+    const textToSend = attachedImage || privateMsgInput.trim();
+    if (!textToSend || !activePrivateMember?.id || !user) return;
+    if (!attachedImage) setPrivateMsgInput('');
+
+    const { data, error } = await supabase.from('direct_messages').insert([{ 
+      sender_id: user.id, 
+      sender_name: currentUser.name, 
+      receiver_id: activePrivateMember.id, 
+      receiver_name: activePrivateMember.name, 
+      text: textToSend
+    }]).select();
+
+    if (!error && data?.[0]) {
+      markMessageAsRead(data[0].id);
+      setPrivateMessages(prev => [...prev, data[0]]);
+      setTimeout(() => scrollToBottom(true, privateChatContainerRef), 10);
+      const cleanText = attachedImage ? '📷 [ส่งรูปภาพ]' : textToSend;
+      setRecentDMMessages(prev => ({ 
+        ...prev, 
+        [activePrivateMember.id]: { 
+          text: `คุณ: ${cleanText}`, 
+          time: 'เมื่อสักครู่', 
+          unread: false, 
+          timestamp: Date.now() 
+        } 
+      }));
+    }
+  };
+
+  const handleSendRoomMsg = async (attachedImage = null) => {
+    const textToSend = attachedImage || roomChatMsg.trim();
+    if (!textToSend || !selectedGroup) return;
+
+    if (!user?.id) {
+      notifyUser('กรุณาเข้าสู่ระบบก่อนส่งข้อความ');
+      return;
+    }
+
+    if (!isApprovedMember(selectedGroup)) {
+      notifyUser('คุณต้องได้รับการอนุมัติจากหัวหน้าห้องก่อนจึงจะส่งข้อความได้ครับ');
+      return;
+    }
+
+    setIsRoomSendAnimating(true);
+    window.setTimeout(() => setIsRoomSendAnimating(false), 500);
+    if (!attachedImage) setRoomChatMsg('');
+
+    const { data, error } = await supabase.from('group_messages').insert([{ 
+      group_id: selectedGroup.id, 
+      user_id: user.id,
+      sender_name: currentUser.name, 
+      sender_avatar: currentUser.avatar, 
+      text: textToSend
+    }]).select();
+
+    if (!error && data?.[0]) {
+      markMessageAsRead(data[0].id);
+      setRoomChatMessages(prev => prev.some(message => String(message.id) === String(data[0].id)) ? prev : [...prev, data[0]]);
+      const sentMessageId = String(data[0].id);
+      setAnimatedRoomMessageId(sentMessageId);
+      window.setTimeout(() => {
+        setAnimatedRoomMessageId(currentId => currentId === sentMessageId ? null : currentId);
+      }, 650);
+      setTimeout(() => scrollToBottom(true, roomChatContainerRef), 10);
+      const cleanText = attachedImage ? '📷 [ส่งรูปภาพ]' : textToSend;
+      setRecentGroupMessages(prev => ({ 
+        ...prev, 
+        [selectedGroup.id]: { 
+          text: `คุณ: ${cleanText}`, 
+          time: 'เมื่อสักครู่', 
+          unread: false, 
+          timestamp: Date.now() 
+        } 
+      }));
+    } else if (error) {
+      notifyUser('ส่งข้อความไม่สำเร็จ: ' + error.message);
+    }
+  };
+
+  const handleChatFileUpload = async (e, isPrivate = false) => {
+    const file = e.target.files[0]; if (!file) return;
+
+    try {
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}_${file.name}`;
+      const { data: storageData, error: uploadErr } = await supabase.storage.from('chat-images').upload(fileName, file);
+
+      if (!uploadErr && storageData) {
+        const { data: urlData } = supabase.storage.from('chat-images').getPublicUrl(fileName);
+        const imagePayload = `[IMAGE]:${urlData.publicUrl}`;
+        if (isPrivate) handleSendPrivateMsg(imagePayload);
+        else handleSendRoomMsg(imagePayload);
+        return;
+      }
+    } catch (err) {
+      console.log('Storage not configured, falling back to Canvas Base64');
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width, height = img.height, MAX = 300;
+        if (width > height ? width > MAX : height > MAX) {
+          if (width > height) { height *= MAX / width; width = MAX; }
+          else { width *= MAX / height; height = MAX; }
+        }
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+        const imagePayload = `[IMAGE]:${compressedBase64}`;
+        if (isPrivate) handleSendPrivateMsg(imagePayload);
+        else handleSendRoomMsg(imagePayload);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRequestJoinRoom = async (group) => {
+    if (!user?.id) {
+      notifyUser('กรุณาเข้าสู่ระบบก่อนเข้าร่วมห้องติว');
+      return;
+    }
+
+    setSelectedGroup(group);
+    const userId = user.id;
+    
+    if (isHost(group)) { 
+      setMyJoinedGroupIds(prev => Array.from(new Set([...prev, group.id]))); 
+      setCurrentTab('room_chat'); 
+      return; 
+    }
+    
+    const { data: existing, error: lookupError } = await supabase.from('group_members')
+      .select('*')
+      .eq('group_id', group.id)
+      .eq('user_id', userId);
+
+    if (lookupError) {
+      notifyUser('ตรวจสอบสถานะการเข้าร่วมไม่สำเร็จ: ' + lookupError.message);
+      return;
+    }
+
+    if (!existing || existing.length === 0) {
+      const { error } = await supabase.from('group_members').insert([{ 
+        group_id: group.id, 
+        user_id: userId, 
+        user_name: currentUser.name, 
+        user_avatar: currentUser.avatar, 
+        status: 'pending' 
+      }]);
+      if (error) {
+        notifyUser('ส่งคำขอเข้าร่วมไม่สำเร็จ: ' + error.message);
+      } else {
+        notifyUser('ส่งคำขอเข้าร่วมกลุ่มติวเรียบร้อยแล้ว กรุณารอหัวหน้าห้องกดอนุมัติก่อนนะครับ');
+      }
+    } else {
+      const myMember = existing[0];
+      if (myMember.status === 'accepted') {
+        setMyJoinedGroupIds(prev => Array.from(new Set([...prev, group.id]))); 
+        setCurrentTab('room_chat');
+      } else if (myMember.status === 'pending') {
+        notifyUser('คำขอของคุณกำลังรอการอนุมัติจากหัวหน้าห้อง จึงยังไม่สามารถเข้าห้องแชตได้ครับ');
+      } else {
+        notifyUser('คำขอเข้าร่วมห้องนี้ของคุณถูกปฏิเสธ');
+      }
+    }
+  };
+
+  const handleLeaveGroup = async (group = selectedGroup) => {
+    if (!group) return;
+    if (!user?.id) {
+      notifyUser('กรุณาเข้าสู่ระบบก่อนออกจากกลุ่มติว');
+      return;
+    }
+    if (confirm(`คุณต้องการออกจากกลุ่มติว "${group.title}" ใช่หรือไม่?`)) {
+      const { data, error } = await supabase.from('group_members')
+        .delete()
+        .eq('group_id', group.id)
+        .eq('user_id', user.id)
+        .select('id');
+      if (error || !data?.length) {
+        notifyUser(error ? 'ออกจากกลุ่มไม่สำเร็จ: ' + error.message : 'ไม่พบสมาชิกของคุณในกลุ่มนี้ จึงยังออกจากกลุ่มไม่ได้');
+        return;
+      }
+      notifyUser('คุณออกจากกลุ่มติวเรียบร้อยแล้ว');
+      setMyJoinedGroupIds(prev => prev.filter(id => String(id) !== String(group.id)));
+      if (String(selectedGroup?.id) === String(group.id)) {
+        setSelectedGroup(null);
+        setCurrentTab('home');
+      }
+      fetchGroupsFromSupabase();
+    }
+  };
+
+  const handleApproveMember = async (memberId, status, notifId = null) => {
+    const { error } = await supabase.from('group_members').update({ status }).eq('id', memberId);
+    if (!error) {
+      notifyUser(status === 'accepted' ? 'อนุมัติสมาชิกเรียบร้อยแล้ว!' : 'ปฏิเสธคำขอเรียบร้อยแล้ว');
+      setGroupMembers(prev => prev.map(m => m.id === memberId ? { ...m, status } : m));
+      setAllPendingRequests(prev => prev.filter(req => req.id !== memberId));
+      
+      setNotifications(prev => prev.map(n => {
+        if (n.memberReqId === memberId || n.id === notifId) {
+          return { ...n, isHandled: true, statusText: status === 'accepted' ? 'อนุมัติแล้ว' : 'ปฏิเสธแล้ว' };
+        }
+        return n;
+      }));
+
+      if (toastNotification && toastNotification.memberReqId === memberId) {
+        setToastNotification(null);
+      }
+      
+      if (status === 'accepted' && selectedGroup) {
+        const { data: acceptedList } = await supabase.from('group_members').select('*').eq('group_id', selectedGroup.id).eq('status', 'accepted');
+        const newCount = (acceptedList ? acceptedList.length : 0) + 1;
+        await supabase.from('study_groups').update({ current_members: newCount }).eq('id', selectedGroup.id);
+        setSelectedGroup(prev => ({ ...prev, current_members: newCount }));
+      }
+    } else {
+      notifyUser('ทำรายการไม่สำเร็จ: ' + error.message);
+    }
+  };
+
+  const handleDeleteGroup = async () => {
+    if (!selectedGroup) return;
+    if (!isHost(selectedGroup)) { notifyUser('เฉพาะหัวหน้าห้องเท่านั้นที่มีสิทธิ์ยุบและลบกลุ่มนี้!'); return; }
+    if (confirm(`⚠️ ยืนยันยุบห้องติว "${selectedGroup.title}" หรือไม่? \nข้อความและสมาชิกทั้งหมดในห้องนี้จะถูกลบทันที`)) {
+      await supabase.from('group_members').delete().eq('group_id', selectedGroup.id);
+      await supabase.from('group_messages').delete().eq('group_id', selectedGroup.id);
+      const { error } = await supabase.from('study_groups').delete().eq('id', selectedGroup.id);
+      
+      if (!error) { 
+        notifyUser('ยุบและลบห้องติวเรียบร้อยแล้ว!'); 
+        setShowMemberListModal(false);
+        setSelectedGroup(null); 
+        await fetchGroupsFromSupabase(); 
+        setCurrentTab('home'); 
+      } else {
+        notifyUser('ลบห้องไม่สำเร็จ: ' + error.message);
+      }
+    }
+  };
+
+  const handleEmailAuth = async (e) => {
+    e.preventDefault();
+    if (!email || !password) { notifyUser('กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วนครับ'); return; }
+    setAuthLoading(true);
+    try {
+      if (authMode === 'login') {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) notifyUser('เข้าสู่ระบบไม่สำเร็จ: ' + error.message);
+        else notifyUser('เข้าสู่ระบบสำเร็จแล้ว!');
+      } else {
+        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: displayName || email.split('@')[0] } } });
+        if (error) notifyUser('สมัครสมาชิกไม่สำเร็จ: ' + error.message);
+        else {
+          notifyUser('สมัครสมาชิกสำเร็จแล้ว!');
+          if (data?.user) {
+            const userObj = { name: displayName || email.split('@')[0], gender: selectedGender, avatar: cartoonAvatars[0].url };
+            const { error: profileError } = await supabase.from('profiles').upsert({ id: data.user.id, email: data.user.email, display_name: userObj.name, gender: userObj.gender, avatar: userObj.avatar, faculty: faculty || 'นักศึกษา SPU', updated_at: new Date().toISOString() });
+            if (profileError) console.error('Unable to save the new user profile:', profileError);
+            setCurrentUser(userObj);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Supabase authentication request failed:', error);
+      const message = error instanceof TypeError || error?.message === 'Failed to fetch'
+        ? 'ติดต่อ Supabase ไม่ได้ (Failed to fetch) กรุณาตรวจอินเทอร์เน็ตและการตั้งค่า URL ของ Supabase'
+        : error.message;
+      notifyUser(`${authMode === 'login' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก'}ไม่สำเร็จ: ${message}`);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleGoogleAuth = async () => {
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin }
+      });
+      if (error) notifyUser('เข้าสู่ระบบด้วย Google ไม่สำเร็จ: ' + error.message);
+    } catch (error) {
+      console.error('Google authentication request failed:', error);
+      const message = error instanceof TypeError || error?.message === 'Failed to fetch'
+        ? 'ติดต่อ Supabase ไม่ได้ กรุณาตรวจอินเทอร์เน็ตและการตั้งค่า URL ของ Supabase'
+        : error.message;
+      notifyUser('เข้าสู่ระบบด้วย Google ไม่สำเร็จ: ' + message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    if (!confirm('คุณต้องการออกจากระบบใช่หรือไม่?')) return;
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      notifyUser('ออกจากระบบไม่สำเร็จ: ' + error.message);
+      return;
+    }
+    setUser(null);
+    setEmail('');
+    setPassword('');
+    setDisplayName('');
+  };
+  const handleOpenNotifications = () => { setShowNotificationModal(true); setHasUnreadNotification(false); };
+
+  const handleNotificationClick = (n) => {
+    if (n.type === 'join_request' && !n.isHandled) return;
+    setShowNotificationModal(false);
+    if (n.type === 'dm' && n.targetUser) { handleOpenPrivateChat(n.targetUser); }
+    else if (n.type === 'group' || n.type === 'join_request') {
+      const gToEnter = n.groupObj || studyGroups.find(g => String(g.id) === String(n.groupId));
+      if (gToEnter) handleRequestJoinRoom(gToEnter);
+    } else setCurrentTab('my_groups');
+  };
+
+  const handleSaveProfile = () => {
+    if (!displayName.trim()) return;
+    const finalName = faculty ? `${displayName} (${faculty})` : displayName;
+    const updatedUser = { ...currentUser, name: finalName, gender: selectedGender };
+    setCurrentUser(updatedUser); localStorage.setItem('user_profile_gender', selectedGender); setIsSavedProfile(true);
+    if (user) syncProfileToSupabase(user, updatedUser);
+    setTimeout(() => setIsSavedProfile(false), 2000);
+  };
+
+  const handleGenderChange = (gender) => {
+    setSelectedGender(gender); localStorage.setItem('user_profile_gender', gender);
+    const updatedUser = { ...currentUser, gender }; setCurrentUser(updatedUser);
+    if (user) syncProfileToSupabase(user, updatedUser);
+  };
+
+  const saveAvatar = async (avatar) => {
+    setCurrentUser(prev => ({ ...prev, avatar }));
+
+    let localSaveFailed = false;
+    try {
+      localStorage.setItem('user_profile_avatar', avatar);
+    } catch {
+      localSaveFailed = true;
+    }
+
+    if (user) {
+      const { error } = await supabase.from('profiles')
+        .update({ avatar, updated_at: new Date().toISOString() })
+        .eq('id', user.id);
+      if (error) {
+        notifyUser(`เปลี่ยนรูปในหน้านี้แล้ว แต่บันทึกลงบัญชีไม่สำเร็จ: ${error.message}`, 'error');
+        return;
+      }
+    }
+
+    if (localSaveFailed) {
+      notifyUser(user
+        ? 'อัปเดตรูปในบัญชีแล้ว แต่บันทึกลงอุปกรณ์นี้ไม่สำเร็จ'
+        : 'เปลี่ยนรูปแล้ว แต่บันทึกลงอุปกรณ์นี้ไม่สำเร็จ', 'error');
+    } else if (user) {
+      notifyUser('เปลี่ยนรูปโปรไฟล์เรียบร้อยแล้ว!');
+    } else {
+      notifyUser('เปลี่ยนรูปแล้ว รูปนี้บันทึกไว้เฉพาะอุปกรณ์นี้ เนื่องจากยังไม่ได้เข้าสู่ระบบ');
+    }
+  };
+
+  const handleSelectAvatar = (url) => saveAvatar(url);
+
+  const handleFileUpload = (e) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    if (file.type && !file.type.startsWith('image/')) {
+      notifyUser('กรุณาเลือกไฟล์รูปภาพ', 'error');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      notifyUser('รูปมีขนาดใหญ่เกินไป กรุณาเลือกไฟล์ไม่เกิน 10 MB', 'error');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onerror = () => notifyUser('อ่านไฟล์รูปไม่สำเร็จ กรุณาลองเลือกรูปอีกครั้ง', 'error');
+    reader.onload = (event) => {
+      if (typeof event.target?.result !== 'string') {
+        notifyUser('เปิดไฟล์รูปไม่สำเร็จ กรุณาลองเลือกรูปอีกครั้ง', 'error');
+        return;
+      }
+
+      const img = new Image();
+      img.onerror = () => notifyUser('ไฟล์นี้ไม่สามารถเปิดเป็นรูปภาพได้', 'error');
+      img.onload = async () => {
+        try {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDimension = 320;
+          if (width > height ? width > maxDimension : height > maxDimension) {
+            if (width > height) {
+              height *= maxDimension / width;
+              width = maxDimension;
+            } else {
+              width *= maxDimension / height;
+              height = maxDimension;
+            }
+          }
+          canvas.width = Math.round(width);
+          canvas.height = Math.round(height);
+          const context = canvas.getContext('2d');
+          if (!context) throw new Error('ไม่สามารถประมวลผลรูปภาพได้');
+          context.drawImage(img, 0, 0, canvas.width, canvas.height);
+          await saveAvatar(canvas.toDataURL('image/jpeg', 0.75));
+        } catch (error) {
+          notifyUser(`เปลี่ยนรูปไม่สำเร็จ: ${error.message}`, 'error');
+        }
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCancelSchedule = async (group) => {
+    if (!isHost(group)) {
+      notifyUser('เฉพาะหัวหน้าห้องเท่านั้นที่ยกเลิกนัดนี้ได้');
+      return;
+    }
+    if (confirm(`คุณต้องการยกเลิกนัดหมายวิชา "${group.subject}" ใช่หรือไม่?`)) {
+      const { data, error } = await supabase.from('study_groups')
+        .delete()
+        .eq('id', group.id)
+        .select('id');
+      if (error || !data?.length) {
+        notifyUser(error
+          ? 'ยกเลิกนัดหมายไม่สำเร็จ: ' + error.message
+          : 'ยกเลิกนัดไม่สำเร็จ: ไม่พบห้องนี้หรือบัญชีของคุณไม่มีสิทธิ์ลบ');
+        return;
+      }
+      setStudyGroups(prev => prev.filter(g => String(g.id) !== String(group.id)));
+      setMyJoinedGroupIds(prev => prev.filter(id => String(id) !== String(group.id)));
+      if (String(selectedGroup?.id) === String(group.id)) {
+        setSelectedGroup(null);
+        setCurrentTab('home');
+      }
+      notifyUser('ยกเลิกนัดหมายเรียบร้อยแล้ว');
+    }
+  };
+
+  const handleOpenEditGroupModal = () => {
+    setCustomSubject(selectedGroup.subject); setGroupTitle(selectedGroup.title);
+    setSelectedCategory(selectedGroup.category); setLocationText(selectedGroup.location);
+    setGroupDescription(selectedGroup.description); setIsEditingGroup(true); setCurrentTab('create');
+  };
+
+  const handleSaveGroup = async () => {
+    if (!groupTitle.trim() || !customSubject.trim()) { 
+      notifyUser('กรุณากรอกชื่อกลุ่มและวิชาให้ครบถ้วนครับ'); 
+      return; 
+    }
+
+    const formattedDateTime = groupDate 
+      ? `${groupDate} | ${groupTime}` 
+      : `เสาร์นี้ | ${groupTime}`;
+
+    const computedFormat = locationText.includes('Google Meet') ? 'online' : 'onsite';
+
+    if (isEditingGroup) {
+      const updatedGroup = { 
+        title: groupTitle.trim(), 
+        subject: customSubject.trim(), 
+        category: selectedCategory, 
+        format: computedFormat,
+        location: locationText, 
+        description: groupDescription,
+        date_time: formattedDateTime
+      };
+      const { error } = await supabase.from('study_groups').update(updatedGroup).eq('id', selectedGroup.id);
+      if (!error) {
+        setSelectedGroup(prev => ({ ...prev, ...updatedGroup })); 
+        setIsEditingGroup(false);
+        notifyUser('แก้ไขข้อมูลห้องติวสำเร็จ!'); 
+        await fetchGroupsFromSupabase(); 
+        setCurrentTab('room_chat');
+      } else {
+        notifyUser('แก้ไขไม่สำเร็จ: ' + error.message);
+      }
+    } else {
+      const newGroupData = {
+        title: groupTitle.trim(), 
+        subject: customSubject.trim(), 
+        category: selectedCategory, 
+        format: computedFormat,
+        location: locationText, 
+        description: groupDescription || 'ชวนเพื่อนมาช่วยกันอ่านและแลกเปลี่ยนความรู้ฟรี!',
+        date_time: formattedDateTime, 
+        max_members: Number(maxMembersInput) || 5, 
+        current_members: 1, 
+        host_name: currentUser.name,
+        host_id: user?.id || user?.email || 'guest'
+      };
+
+      const { data, error } = await supabase.from('study_groups').insert([newGroupData]).select();
+      
+      if (!error && data?.[0]) {
+        setMyJoinedGroupIds(prev => Array.from(new Set([...prev, data[0].id]))); 
+        setSelectedGroup(data[0]);
+        await fetchGroupsFromSupabase(); 
+        notifyUser('🎉 สร้างห้องติวใหม่สำเร็จเรียบร้อยแล้ว!'); 
+        setCurrentTab('home');
+      } else {
+        notifyUser('⚠ สร้างห้องไม่สำเร็จเนื่องจาก: ' + (error?.message || 'โปรดตรวจสอบสิทธิ์ RLS ใน Supabase'));
+      }
+    }
+
+    setGroupTitle(''); 
+    setCustomSubject(''); 
+    setGroupDescription('');
+  };
+
+  const handleOpenPrivateChat = (targetUser) => {
+    setShowQuickFriendModal(false);
+    const cleanName = (targetUser.name || targetUser.display_name || targetUser.email?.split('@')[0] || 'เพื่อน').replace(/\s*\(นักศึกษา SPU\)/g, '');
+    setActivePrivateMember({ 
+      id: targetUser.id, 
+      name: cleanName, 
+      avatar: targetUser.avatar || cartoonAvatars[0].url 
+    });
+    
+    setRecentDMMessages(prev => ({ ...prev, [targetUser.id]: { ...prev[targetUser.id], unread: false } }));
+    setCurrentTab('private_chat');
+  };
+
+  const filteredGroups = studyGroups.filter(g => {
+    const matchSearch = searchTerm === '' || g.title?.toLowerCase().includes(searchTerm.toLowerCase()) || g.subject?.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchSearch && (activeCategory === 'ทั้งหมด' || g.category === activeCategory);
+  }).sort((a, b) => {
+    if (groupSortMode === 'capacity') {
+      const occupancyA = Number(a.current_members || 0) / Math.max(Number(a.max_members || 5), 1);
+      const occupancyB = Number(b.current_members || 0) / Math.max(Number(b.max_members || 5), 1);
+      return occupancyB - occupancyA;
+    }
+    return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+  });
+
+  const myJoinedGroups = studyGroups.filter(g => myJoinedGroupIds.includes(g.id) || isHost(g))
+    .sort((a, b) => (recentGroupMessages[b.id]?.timestamp || 0) - (recentGroupMessages[a.id]?.timestamp || 0));
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const nextUpcomingSchedule = myJoinedGroups
+    .map(group => ({ group, date: getStudySessionDate(group.date_time) }))
+    .filter(item => item.date && item.date >= new Date())
+    .sort((a, b) => a.date - b.date)[0] || null;
+
+  const sortedAcceptedFriends = [...acceptedFriends].sort((a, b) => {
+    const timeA = recentDMMessages[a.id]?.timestamp || 0;
+    const timeB = recentDMMessages[b.id]?.timestamp || 0;
+    return timeB - timeA;
+  });
+
+  const categories = ['ทั้งหมด', 'ภาษาต่างประเทศ', 'วิชาการ', 'เทคโนโลยี/ไอที', 'ทักษะทั่วไป'];
+  const getCategoryCount = (category) => category === 'ทั้งหมด'
+    ? studyGroups.length
+    : studyGroups.filter(group => group.category === category).length;
+  const pendingMembers = groupMembers.filter(m => m.status === 'pending');
+  const bitHour = new Date().getHours();
+  const bitGreeting = bitHour < 12 ? 'อรุณสวัสดิ์!' : bitHour < 17 ? 'สวัสดีตอนบ่าย!' : 'สวัสดีตอนเย็น!';
+  const bitTimePhrase = bitHour < 12
+    ? 'เริ่มวันใหม่ด้วยการหากลุ่มติวดีไหม?'
+    : bitHour < 17
+      ? 'พักจากเรียนแป๊บหนึ่ง แล้วมาติวด้วยกันไหม?'
+      : 'เย็นนี้มาเก็บวิชาที่ยังค้างกันเถอะ!';
+  const bitPhrases = [
+    'พร้อมหากลุ่มติวด้วยกันไหม?',
+    'ลองพิมพ์ชื่อวิชาที่สนใจในช่องค้นหาดูเลย',
+    'ค่อย ๆ เรียนไปด้วยกัน เก่งขึ้นได้แน่นอน!',
+    'เยี่ยม! ก้าวเล็ก ๆ ก็พาเราเก่งขึ้น',
+    'อยากเปิดห้องติวใหม่ก็ทำได้เลยนะ'
+  ];
+  const hasSearchResults = filteredGroups.length > 0 || searchedFriends.length > 0;
+  const homeBitMessage = isSearchingRealtime
+    ? 'กำลังช่วยค้นหาให้อยู่นะ...'
+    : searchTerm.trim()
+      ? hasSearchResults
+        ? 'เจอแล้ว! เลือกรายการที่สนใจได้เลย'
+        : 'ยังไม่เจอ ลองเปลี่ยนคำค้นดูนะ'
+      : bitPhraseIndex === 0
+        ? bitTimePhrase
+        : bitPhrases[bitPhraseIndex];
+  const homeBitMood = searchTerm.trim() && !isSearchingRealtime && !hasSearchResults
+    ? 'thinking'
+    : bitMood;
+
+  return (
+    <div className="bg-slate-950 min-h-[100dvh] w-full sm:px-4 sm:py-4 flex justify-center items-center font-sans">
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .bit-mascot__float { transform-box: fill-box; transform-origin: center; animation: bit-float 2.8s ease-in-out infinite; }
+        .bit-mascot__shadow { transform-box: fill-box; transform-origin: center; animation: bit-shadow 2.8s ease-in-out infinite; }
+        .bit-mascot__wave-arm { transform-box: view-box; transform-origin: 88px 72px; animation: bit-wave 1.45s ease-in-out infinite; }
+        .bit-mascot__eyes { transform-box: fill-box; transform-origin: center; animation: bit-blink 4.8s ease-in-out infinite; }
+        .bit-mascot__thought { transform-box: fill-box; transform-origin: center; animation: bit-thought 1.1s ease-in-out infinite; }
+        .bit-mascot__confetti { transform-box: fill-box; transform-origin: center; animation: bit-confetti .55s ease-in-out infinite alternate; }
+        .bit-hero-mascot { animation: bit-arrive .72s cubic-bezier(.2,.8,.2,1) both; }
+        .bit-mascot--thinking .bit-mascot__float { animation: bit-think 2s ease-in-out infinite; }
+        .bit-mascot--thinking .bit-mascot__wave-arm { animation: bit-chin 2s ease-in-out infinite; }
+        .bit-mascot--cheer .bit-mascot__float { animation: bit-celebrate .62s cubic-bezier(.3,.8,.3,1) 5; }
+        .bit-mascot--cheer .bit-mascot__wave-arm { animation: bit-cheer-wave .62s ease-in-out 5; }
+        @keyframes bit-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+        @keyframes bit-shadow { 0%, 100% { transform: scaleX(1); opacity: .12; } 50% { transform: scaleX(.82); opacity: .07; } }
+        @keyframes bit-wave { 0%, 100% { transform: rotate(0); } 22%, 58% { transform: rotate(-38deg); } 40%, 76% { transform: rotate(22deg); } }
+        @keyframes bit-chin { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(-38deg); } }
+        @keyframes bit-think { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-3px) rotate(-4deg); } }
+        @keyframes bit-thought { 0%, 100% { transform: translateY(2px) scale(.9); opacity: .75; } 50% { transform: translateY(-3px) scale(1.08); opacity: 1; } }
+        @keyframes bit-confetti { from { transform: scale(.85) rotate(-6deg); opacity: .65; } to { transform: scale(1.12) rotate(6deg); opacity: 1; } }
+        @keyframes bit-celebrate { 0%, 100% { transform: translateY(0) rotate(0) scale(1); } 35% { transform: translateY(-16px) rotate(-8deg) scale(1.04); } 70% { transform: translateY(1px) rotate(7deg) scale(.98); } }
+        @keyframes bit-cheer-wave { 0%, 100% { transform: rotate(0); } 25%, 75% { transform: rotate(-48deg); } 50% { transform: rotate(32deg); } }
+        @keyframes bit-arrive { 0% { opacity: 0; transform: translateY(22px) scale(.78) rotate(-8deg); } 72% { opacity: 1; transform: translateY(-5px) scale(1.06) rotate(3deg); } 100% { transform: translateY(0) scale(1) rotate(0); } }
+        @keyframes bit-blink { 0%, 44%, 48%, 100% { transform: scaleY(1); } 46% { transform: scaleY(.12); } }
+        @keyframes room-message-enter { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes room-plane-send { 0% { transform: translate(0, 0) rotate(0); } 45% { transform: translate(4px, -4px) rotate(14deg) scale(1.12); } 100% { transform: translate(0, 0) rotate(0); } }
+        .room-message-enter { animation: room-message-enter .28s cubic-bezier(.2,.8,.2,1) both; }
+        .room-plane-send { animation: room-plane-send .42s ease-out; }
+        @media (prefers-reduced-motion: reduce) {
+          .bit-hero-mascot, .bit-mascot__float, .bit-mascot__shadow, .bit-mascot__wave-arm, .bit-mascot__eyes, .bit-mascot__thought, .bit-mascot__confetti { animation: none !important; }
+          .room-message-enter, .room-plane-send { animation: none !important; }
+        }
+      `}</style>
+
+      {/* Frame มือถือ พร้อมระบบเปิดไฟปิดไฟ */}
+      <div className={`w-full max-w-[480px] h-[100dvh] sm:h-[min(900px,calc(100dvh-2rem))] bg-[#F8FAFC] rounded-none sm:rounded-[40px] shadow-2xl border-0 sm:border-[6px] border-slate-800 overflow-hidden flex flex-col relative transition-all duration-300 ${
+        !user && isSparking ? 'ring-4 ring-amber-400 scale-[0.998]' : ''
+      }`}>
+
+        {!user && authMode === 'login' && (
+          <>
+            {/* Floating Controls: ปุ่มเปิด-ปิดไฟ & เปลี่ยนธีมสี */}
+            <div className="absolute top-4 right-4 z-40 flex items-center gap-1.5">
+              {/* Color Picker Toggle */}
+              <button
+                onClick={() => setShowColorPicker(!showColorPicker)}
+                className="p-1.5 rounded-full bg-white/20 backdrop-blur-md border border-white/30 text-white hover:bg-white/30 shadow-md transition-all"
+                title="เปลี่ยนธีมสี"
+              >
+                <Palette className="w-4 h-4 text-amber-300" />
+              </button>
+
+              {/* Light Switch Button */}
+              <button
+                onClick={handleToggleLights}
+                className={`p-1.5 rounded-full backdrop-blur-md border border-white/30 text-white shadow-md transition-all flex items-center gap-1 ${
+                  isLightsOff ? 'bg-amber-500/80 hover:bg-amber-500' : 'bg-slate-800/60 hover:bg-slate-800'
+                }`}
+                title={isLightsOff ? 'เปิดไฟ' : 'ปิดไฟ (Dark Lounge Mode)'}
+              >
+                {isLightsOff ? <Sun className="w-4 h-4 text-amber-100" /> : <Moon className="w-4 h-4 text-slate-200" />}
+                <Zap className={`w-3 h-3 ${isSparking ? 'text-amber-300 animate-bounce' : 'text-slate-400'}`} />
+              </button>
+            </div>
+
+            {/* Color Picker Modal Box */}
+            {showColorPicker && (
+              <div className="absolute top-14 right-4 z-50 bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-2xl p-2.5 shadow-2xl flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-slate-400 px-1">เลือกโทนสีธีม:</span>
+                <div className="flex gap-2">
+                  {Object.keys(themePresets).map((tKey) => (
+                    <button
+                      key={tKey}
+                      onClick={() => { setSelectedTheme(tKey); setShowColorPicker(false); }}
+                      className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${themePresets[tKey].dotBg} ${
+                        selectedTheme === tKey ? 'border-white ring-2 ring-white/50' : 'border-transparent'
+                      }`}
+                      title={themePresets[tKey].name}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {actionToast && (
+          <div className="pointer-events-none absolute inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[60]" aria-live={actionToast.type === 'error' ? 'assertive' : 'polite'}>
+            <div
+              role={actionToast.type === 'error' ? 'alert' : 'status'}
+              className={`pointer-events-auto flex items-start gap-2.5 rounded-2xl border p-3 shadow-xl backdrop-blur-md ${
+                actionToast.type === 'success'
+                  ? 'border-emerald-200 bg-emerald-50/95 text-emerald-950'
+                  : actionToast.type === 'error'
+                    ? 'border-rose-200 bg-rose-50/95 text-rose-950'
+                    : 'border-indigo-200 bg-white/95 text-slate-900'
+              }`}
+            >
+              {actionToast.type === 'success' ? <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> :
+               actionToast.type === 'error' ? <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" /> :
+               <Bell className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />}
+              <p className="max-h-20 flex-1 overflow-y-auto text-xs leading-relaxed">{actionToast.message}</p>
+              <button onClick={dismissActionToast} aria-label="ปิดข้อความแจ้งเตือน" className="-mr-1 -mt-1 rounded-lg p-1 text-slate-500 hover:bg-black/5">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* REALTIME NOTIFICATION */}
+        {toastNotification && (
+          <div onClick={() => { handleNotificationClick(toastNotification); setToastNotification(null); }} className="absolute top-12 left-4 right-4 bg-slate-900/95 text-white p-3.5 rounded-2xl shadow-2xl backdrop-blur-md border border-indigo-500/40 z-50 flex flex-col gap-2 cursor-pointer">
+            <div className="flex justify-between items-start">
+              <div className="space-y-0.5 flex-1 pr-2">
+                <h4 className="text-xs font-bold text-indigo-300 flex items-center gap-1">{toastNotification.title}</h4>
+                <p className="text-[11px] text-slate-200 leading-snug line-clamp-2">{toastNotification.message}</p>
+              </div>
+              <button onClick={(e) => { e.stopPropagation(); setToastNotification(null); }} className="p-1 text-slate-400 hover:text-white shrink-0"><X className="w-4 h-4" /></button>
+            </div>
+            {toastNotification.type === 'join_request' && !toastNotification.isHandled && (
+              <div className="flex gap-2 pt-1 border-t border-slate-700/60" onClick={(e) => e.stopPropagation()}>
+                <button onClick={() => handleApproveMember(toastNotification.memberReqId, 'accepted')} className="flex-1 bg-emerald-600 text-white font-bold py-1.5 rounded-xl text-[10px] flex items-center justify-center gap-1 hover:bg-emerald-700"><Check className="w-3.5 h-3.5" /> ยอมรับ</button>
+                <button onClick={() => handleApproveMember(toastNotification.memberReqId, 'rejected')} className="flex-1 bg-rose-500 text-white font-bold py-1.5 rounded-xl text-[10px] flex items-center justify-center gap-1 hover:bg-rose-600"><X className="w-3.5 h-3.5" /> ไม่ยอมรับ</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* NOTIFICATIONS LIST MODAL */}
+        {showNotificationModal && (
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <div className="bg-white w-full rounded-3xl p-4 space-y-3 shadow-2xl max-h-[480px] flex flex-col">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <div className="flex items-center gap-1.5"><Bell className="w-4 h-4 text-indigo-600" /><h3 className="font-bold text-xs text-slate-900">การแจ้งเตือนล่าสุด ({notifications.length}/6)</h3></div>
+                <button onClick={() => setShowNotificationModal(false)} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar text-xs">
+                {notifications.length === 0 ? <p className="text-center text-slate-400 text-[10px] py-4">ไม่มีการแจ้งเตือนใหม่</p> :
+                  notifications.map((n) => (
+                    <div key={n.id} className={`border p-3 rounded-2xl space-y-1.5 ${n.isHandled || n.read ? 'bg-slate-50 border-slate-100 opacity-70' : 'bg-indigo-50/40 border-indigo-200'}`}>
+                      <div className="flex justify-between items-center" onClick={() => handleNotificationClick(n)}>
+                        <span className="font-bold text-indigo-900 text-xs flex items-center gap-1">{n.title} {!n.isHandled && !n.read && <span className="w-2 h-2 bg-rose-500 rounded-full inline-block"></span>}</span>
+                        <span className="text-[9px] text-slate-400">{n.time}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-600">{n.desc}</p>
+                      
+                      {n.type === 'join_request' && !n.isHandled ? (
+                        <div className="flex gap-2 pt-1">
+                          <button onClick={() => handleApproveMember(n.memberReqId, 'accepted', n.id)} className="flex-1 bg-emerald-600 text-white font-bold py-1.5 rounded-xl text-[10px] flex items-center justify-center gap-1 hover:bg-emerald-700"><Check className="w-3.5 h-3.5" /> ยอมรับ</button>
+                          <button onClick={() => handleApproveMember(n.memberReqId, 'rejected', n.id)} className="flex-1 bg-rose-500 text-white font-bold py-1.5 rounded-xl text-[10px] flex items-center justify-center gap-1 hover:bg-rose-600"><X className="w-3.5 h-3.5" /> ไม่ยอมรับ</button>
+                        </div>
+                      ) : n.statusText && (
+                        <div className="pt-1 text-right">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${n.statusText === 'อนุมัติแล้ว' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                            {n.statusText}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                }
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MEMBERS MODAL */}
+        {showMemberListModal && selectedGroup && (
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <div className="bg-white w-full rounded-3xl p-4 space-y-3 shadow-2xl max-h-[480px] flex flex-col">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <div className="flex items-center gap-1.5"><Users className="w-4 h-4 text-indigo-600" /><h3 className="font-bold text-xs text-slate-900">สมาชิกในห้องติว ({groupMembers.filter(m => m.status === 'accepted').length + 1}/{selectedGroup.max_members || 5})</h3></div>
+                <button onClick={() => setShowMemberListModal(false)} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar text-xs">
+                <div className="bg-indigo-50/80 p-2.5 rounded-2xl border border-indigo-100 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center text-xs">👑</div>
+                    <div><h4 className="font-bold text-xs text-slate-900">{selectedGroup.host_name}</h4><p className="text-[9px] text-indigo-600 font-bold">Host ผู้สร้างกลุ่ม</p></div>
+                  </div>
+                </div>
+
+                {pendingMembers.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[10px] font-bold text-indigo-900 block">⚠️ คำขอเข้าร่วมกลุ่ม ({pendingMembers.length})</span>
+                    {pendingMembers.map(m => (
+                      <div key={m.id} className="bg-indigo-50/50 p-2.5 rounded-2xl border border-indigo-200 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <img src={m.user_avatar || cartoonAvatars[0].url} className="w-8 h-8 rounded-full border object-cover bg-indigo-50" />
+                          <div><h4 className="font-bold text-xs text-slate-900">{m.user_name}</h4><p className="text-[9px] text-indigo-600 font-bold">รออนุมัติ</p></div>
+                        </div>
+                        {isHost(selectedGroup) ? (
+                          <div className="flex gap-1.5 shrink-0">
+                            <button onClick={() => handleApproveMember(m.id, 'accepted')} className="bg-emerald-600 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-0.5 hover:bg-emerald-700"><Check className="w-3.5 h-3.5" /> ยอมรับ</button>
+                            <button onClick={() => handleApproveMember(m.id, 'rejected')} className="bg-rose-500 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-0.5 hover:bg-rose-600"><X className="w-3.5 h-3.5" /> ไม่ยอมรับ</button>
+                          </div>
+                        ) : <span className="text-[9px] text-slate-400 font-bold italic">รอหัวหน้าห้องอนุมัติ</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[10px] font-bold text-slate-400 block">สมาชิกทั้งหมดในห้อง</span>
+                  {groupMembers.filter(m => m.status === 'accepted').map(m => (
+                    <div key={m.id} className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100 flex items-center gap-2">
+                      <img src={m.user_avatar || cartoonAvatars[0].url} className="w-8 h-8 rounded-full border object-cover bg-indigo-50" />
+                      <div><h4 className="font-bold text-xs text-slate-900">{m.user_name}</h4><p className="text-[9px] text-emerald-600 font-bold">● สมาชิกอนุมัติแล้ว</p></div>
+                    </div>
+                  ))}
+                </div>
+
+                {isHost(selectedGroup) && (
+                  <div className="pt-3 border-t border-slate-100">
+                    <button onClick={handleDeleteGroup} className="w-full bg-rose-50 text-rose-600 font-bold py-2.5 rounded-xl border border-rose-200 text-xs flex items-center justify-center gap-1.5 hover:bg-rose-100">
+                      <Trash2 className="w-4 h-4" /> 🚨 ยุบและลบห้องติวนี้
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* QUICK SEARCH FRIEND MODAL */}
+        {showQuickFriendModal && (
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <div className="bg-white w-full rounded-3xl p-4 space-y-3 shadow-2xl max-h-[480px] flex flex-col">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <div className="flex items-center gap-1.5"><UserPlus className="w-4 h-4 text-indigo-600" /><h3 className="font-bold text-xs text-slate-900">ค้นหาเพื่อน / ทักแชตด่วน</h3></div>
+                <button onClick={() => setShowQuickFriendModal(false)} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 flex items-center gap-2">
+                <Search className="w-4 h-4 text-slate-400" />
+                <input type="text" value={friendSearchTerm} onChange={(e) => setFriendSearchTerm(e.target.value)} placeholder="พิมพ์ชื่อเพื่อน หรืออีเมล SPU..." className="w-full text-xs outline-none bg-transparent" autoFocus />
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar text-xs">
+                {friendSearchTerm.trim() !== '' ? (
+                  searchedFriends.map((u) => {
+                    const isAccepted = acceptedFriends.some(f => f.id === u.id);
+                    const isPendingSent = sentFriendRequests.some(r => r.receiver_id === u.id);
+                    return (
+                      <div key={u.id} className="bg-white p-2.5 rounded-2xl border border-slate-100 flex items-center justify-between">
+                        <div className="flex items-center gap-2.5"><img src={u.avatar} className="w-8 h-8 rounded-full object-cover border border-slate-200 bg-indigo-50" /><div><h4 className="font-bold text-xs text-slate-900">{u.name}</h4><p className="text-[9px] text-slate-400">{u.faculty}</p></div></div>
+                        {isAccepted ? <button onClick={() => handleOpenPrivateChat(u)} className="bg-[#4338CA] text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1"><MessageCircle className="w-3 h-3" /> ทักแชต</button> :
+                         isPendingSent ? <span className="bg-amber-50 text-amber-600 text-[9px] font-bold px-2.5 py-1.5 rounded-lg border border-amber-200">รอตอบรับ</span> :
+                         <button onClick={() => handleSendFriendRequest(u)} className="bg-indigo-50 text-indigo-600 text-[9px] font-bold px-2.5 py-1.5 rounded-lg border border-indigo-200 flex items-center gap-1"><UserPlus className="w-3 h-3" /> แอดเพื่อน</button>}
+                      </div>
+                    );
+                  })
+                ) : (
+                  acceptedFriends.map((f) => (
+                    <div key={f.id} onClick={() => handleOpenPrivateChat({ id: f.id, name: f.display_name || f.email.split('@')[0], avatar: f.avatar })} className="bg-slate-50 border border-slate-100 p-2.5 rounded-2xl flex items-center justify-between cursor-pointer">
+                      <div className="flex items-center gap-2.5"><img src={f.avatar || cartoonAvatars[0].url} className="w-8 h-8 rounded-full object-cover border border-slate-200 bg-indigo-50" /><div><h4 className="font-bold text-xs text-slate-900">{(f.display_name || f.email.split('@')[0]).replace(/\s*\(นักศึกษา SPU\)/g, '')}</h4><p className="text-[9px] text-emerald-600 font-bold">● พร้อมแชต</p></div></div>
+                      <span className="text-indigo-600 text-[10px] font-bold flex items-center gap-1"><MessageCircle className="w-3.5 h-3.5" /> ทักแชต</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* AUTH SCREEN (ปรับปรุงดีไซน์ + Rain Ambient + ✨ Starfall Sparkle Dust + 🏫 โลโก้ SPU สีขาวเงาฟุ้ง + ขีดสีชมพูเรืองแสง) */}
+        {!user ? (
+          <div 
+            onMouseMove={handleMouseMove}
+            onMouseLeave={() => {
+              mouseTrackingRef.current.active = false;
+              if (customCursorRef.current) customCursorRef.current.style.opacity = '0';
+            }}
+            className={`flex-1 flex flex-col overflow-y-auto no-scrollbar relative transition-colors duration-500 cursor-none ${
+              isLightsOff 
+                ? `bg-gradient-to-b ${currentThemeObj.bg}`
+                : 'bg-[#F8FAFC]'
+            }`}
+          >
+            {/* 🌧️ Rain Atmosphere Canvas */}
+            <canvas 
+              ref={rainCanvasRef} 
+              className="absolute inset-0 pointer-events-none z-0 opacity-80"
+            />
+
+            {/* ✨ Starfall & Sparkle Dust Canvas (ดวงดาว 4 แฉก + ฝุ่นดาวระยิบระยับตามมือ) */}
+            <canvas
+              ref={starfallCanvasRef}
+              className="absolute inset-0 pointer-events-none z-10"
+            />
+
+            <div
+              ref={customCursorRef}
+              aria-hidden="true"
+              className="absolute left-0 top-0 z-20 h-7 w-7 rounded-full border border-white/80 pointer-events-none opacity-0"
+              style={{
+                willChange: 'transform',
+                boxShadow: `0 0 18px rgba(${currentThemeObj.particleColor}, 0.8), inset 0 0 8px rgba(${currentThemeObj.particleColor}, 0.25)`,
+                transition: 'opacity 150ms ease'
+              }}
+            >
+              <span
+                className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white"
+                style={{ boxShadow: `0 0 8px rgba(${currentThemeObj.particleColor}, 1)` }}
+              />
+            </div>
+
+            {/* Header Visual Hero */}
+            <div className={`pt-9 pb-8 px-6 text-white text-center relative overflow-hidden rounded-b-[36px] shadow-lg shrink-0 transition-all duration-500 z-10 ${
+              isLightsOff 
+                ? 'bg-slate-900/40 backdrop-blur-md border-b border-white/10' 
+                : 'bg-gradient-to-br from-indigo-700 via-indigo-600 to-slate-900'
+            }`}>
+              {/* 🏫 โลโก้ SPU (ทางเลือก A: สีขาวบริสุทธิ์เด่นชัด + Drop Shadow + ขีดชมพูเรืองแสงใต้ตัว U) */}
+              <div className="absolute top-4 left-4 z-20 flex flex-col items-start select-none pointer-events-none">
+                <div className="relative inline-block">
+                  <span className="text-2xl font-black tracking-tight text-white leading-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)] font-sans">
+                    SPU
+                  </span>
+                  {/* ขีดสีชมพูเรืองแสงเฉพาะใต้ตัว U */}
+                  <span className="absolute -bottom-1.5 right-0 w-3.5 h-[3px] bg-[#EC4899] rounded-xs shadow-[0_0_8px_#EC4899]"></span>
+                </div>
+              </div>
+
+              <div className="absolute -top-6 -right-6 w-24 h-24 bg-white/10 rounded-full blur-xl pointer-events-none" />
+              <div className="absolute bottom-0 left-4 w-20 h-20 bg-indigo-400/20 rounded-full blur-lg pointer-events-none" />
+
+              <div className="relative z-10 flex flex-col items-center">
+                <div className={`w-14 h-14 backdrop-blur-md rounded-2xl border border-white/20 flex items-center justify-center mb-3 shadow-inner ${
+                  isLightsOff ? 'bg-white/5 ring-2 ring-white/10' : 'bg-white/10'
+                }`}>
+                  <BookOpen className="w-7 h-7 text-white" />
+                </div>
+                <div className="flex items-center gap-1.5 justify-center mb-1">
+                  <h1 className="text-2xl font-black tracking-tight text-white">StudyBuddy</h1>
+                  <Sparkles className="w-4 h-4 text-amber-300 animate-spin" />
+                </div>
+                <p className="text-[11px] text-indigo-100/90 font-medium max-w-[240px]">
+                  ศูนย์รวมกลุ่มติวหนังสือ & หาเพื่อนเรียน SPU
+                </p>
+
+                {/* SPU Tag Badge */}
+                <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 border border-white/20 backdrop-blur-md">
+                  <GraduationCap className="w-3.5 h-3.5 text-amber-300" />
+                  <span className="text-[10px] font-semibold text-white">Sripatum University</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Auth Form Container */}
+            <div className="flex-1 px-6 pt-6 pb-8 flex flex-col justify-between z-10 relative">
+              <div>
+                {/* Auth Mode Toggle Tabs */}
+                <div className={`p-1 rounded-2xl flex gap-1 mb-5 transition-all ${
+                  isLightsOff ? 'bg-slate-800/80 border border-slate-700 backdrop-blur-md' : 'bg-slate-200/80'
+                }`}>
+                  <button
+                    type="button"
+                    onClick={() => setAuthMode('login')}
+                    className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
+                      authMode === 'login'
+                        ? isLightsOff 
+                          ? `${currentThemeObj.primaryBtn} text-white shadow-lg` 
+                          : 'bg-white text-indigo-900 shadow-xs'
+                        : isLightsOff ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    เข้าสู่ระบบ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAuthMode('register')}
+                    className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
+                      authMode === 'register'
+                        ? isLightsOff 
+                          ? `${currentThemeObj.primaryBtn} text-white shadow-lg` 
+                          : 'bg-white text-indigo-900 shadow-xs'
+                        : isLightsOff ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    สมัครสมาชิก
+                  </button>
+                </div>
+
+                <form onSubmit={handleEmailAuth} className="space-y-3.5">
+                  {authMode === 'register' && (
+                    <div>
+                      <label className={`text-[10px] font-bold block mb-1 ${isLightsOff ? 'text-slate-300' : 'text-slate-600'}`}>
+                        ชื่อแสดงผล / Display Name
+                      </label>
+                      <div className={`flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all ${
+                        isLightsOff 
+                          ? 'bg-slate-900/70 border-slate-700 text-white focus-within:border-indigo-400 backdrop-blur-md' 
+                          : 'bg-white/90 border-slate-200 text-slate-800 focus-within:border-indigo-500 backdrop-blur-md'
+                      }`}>
+                        <User className="w-4 h-4 text-slate-400 shrink-0" />
+                        <input
+                          type="text"
+                          value={displayName}
+                          onChange={(e) => setDisplayName(e.target.value)}
+                          placeholder="เช่น ชื่อเล่นที่ใช้แสดง"
+                          className="w-full text-xs outline-none bg-transparent cursor-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className={`text-[10px] font-bold block mb-1 ${isLightsOff ? 'text-slate-300' : 'text-slate-600'}`}>
+                      อีเมล / Email
+                    </label>
+                    <div className={`flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all ${
+                      isLightsOff 
+                        ? 'bg-slate-900/70 border-slate-700 text-white focus-within:border-indigo-400 backdrop-blur-md' 
+                        : 'bg-white/90 border-slate-200 text-slate-800 focus-within:border-indigo-500 backdrop-blur-md'
+                    }`}>
+                      <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+                      <input
+                        type="email"
+                          autoComplete="off"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="กรอกอีเมลของคุณ"
+                        className="w-full text-xs outline-none bg-transparent cursor-none"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={`text-[10px] font-bold block mb-1 ${isLightsOff ? 'text-slate-300' : 'text-slate-600'}`}>
+                      รหัสผ่าน / Password
+                    </label>
+                    <div className={`flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all ${
+                      isLightsOff 
+                        ? 'bg-slate-900/70 border-slate-700 text-white focus-within:border-indigo-400 backdrop-blur-md' 
+                        : 'bg-white/90 border-slate-200 text-slate-800 focus-within:border-indigo-500 backdrop-blur-md'
+                    }`}>
+                      <Lock className="w-4 h-4 text-slate-400 shrink-0" />
+                      <input
+                        type="password"
+                          autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full text-xs outline-none bg-transparent cursor-none"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className={`w-full text-white font-bold py-3 rounded-2xl text-xs shadow-md transition-all flex items-center justify-center gap-1.5 mt-3 disabled:opacity-70 cursor-none ${
+                      isLightsOff 
+                        ? currentThemeObj.primaryBtn 
+                        : 'bg-[#4338CA] hover:bg-indigo-700 shadow-indigo-600/20'
+                    }`}
+                  >
+                    {authLoading ? (
+                      'กำลังดำเนินการ...'
+                    ) : authMode === 'login' ? (
+                      <>
+                        <LogIn className="w-4 h-4" />
+                        <span>เข้าสู่ระบบห้องติว</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>ยืนยันสมัครสมาชิก</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                <div className="flex items-center gap-3 my-4" aria-hidden="true">
+                  <div className={`h-px flex-1 ${isLightsOff ? 'bg-slate-700' : 'bg-slate-200'}`} />
+                  <span className={`text-[10px] font-semibold ${isLightsOff ? 'text-slate-400' : 'text-slate-500'}`}>
+                    หรือ {authMode === 'login' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก'}ด้วย
+                  </span>
+                  <div className={`h-px flex-1 ${isLightsOff ? 'bg-slate-700' : 'bg-slate-200'}`} />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGoogleAuth}
+                  disabled={authLoading}
+                  aria-label={authMode === 'login' ? 'เข้าสู่ระบบด้วย Google' : 'สมัครสมาชิกด้วย Google'}
+                  className={`w-full flex items-center justify-center gap-2.5 rounded-2xl border py-3 text-xs font-bold transition-colors disabled:opacity-60 cursor-none ${
+                    isLightsOff
+                      ? 'border-slate-700 bg-slate-900/70 text-white hover:bg-slate-800'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <svg aria-hidden="true" viewBox="0 0 48 48" className="h-4 w-4">
+                    <path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.8 6.1-15Z" />
+                    <path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9l-6.6-5.1c-1.8 1.2-4.1 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.3A20 20 0 0 0 24 44Z" />
+                    <path fill="#FBBC05" d="M12.6 27.6a12 12 0 0 1 0-7.2v-5.3H5.8a20 20 0 0 0 0 17.8l6.8-5.3Z" />
+                    <path fill="#EA4335" d="M24 12c3 0 5.7 1 7.8 3.1l5.8-5.8C34.1 6 29.5 4 24 4A20 20 0 0 0 5.8 15.1l6.8 5.3C14.2 15.6 18.7 12 24 12Z" />
+                  </svg>
+                  <span>{authMode === 'login' ? 'เข้าสู่ระบบด้วย Google' : 'สมัครสมาชิกด้วย Google'}</span>
+                </button>
+              </div>
+
+              {/* Footer text */}
+              <div className="text-center pt-4">
+                <p className={`text-xs ${isLightsOff ? 'text-slate-400' : 'text-slate-500'}`}>
+                  {authMode === 'login' ? (
+                    <>
+                      ยังไม่มีบัญชีใช่ไหม?{' '}
+                      <span
+                        onClick={() => setAuthMode('register')}
+                        className={`font-bold cursor-pointer hover:underline ${
+                          isLightsOff ? currentThemeObj.accentText : 'text-indigo-600'
+                        }`}
+                      >
+                        สมัครสมาชิกใหม่
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      มีบัญชีอยู่แล้ว?{' '}
+                      <span
+                        onClick={() => setAuthMode('login')}
+                        className={`font-bold cursor-pointer hover:underline ${
+                          isLightsOff ? currentThemeObj.accentText : 'text-indigo-600'
+                        }`}
+                      >
+                        เข้าสู่ระบบ
+                      </span>
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* TOP HEADER */}
+            {currentTab !== 'room_chat' && currentTab !== 'private_chat' && (
+              <div className="bg-white px-5 pt-6 pb-3 flex items-center justify-between border-b border-slate-100 shrink-0 z-20">
+                <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setCurrentTab('home')}>
+                  <div className="w-6 h-6 rounded-md bg-indigo-600 flex items-center justify-center text-white font-black text-xs">S</div>
+                  <span className="font-bold text-lg text-[#4F46E5]">StudyBuddy</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setShowQuickFriendModal(true)} className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-full border border-indigo-100 bg-indigo-50/50"><UserPlus className="w-5 h-5" /></button>
+                  <button onClick={() => setCurrentTab('my_groups')} className={`p-1.5 rounded-full relative ${currentTab === 'my_groups' ? 'bg-indigo-100 text-indigo-600' : 'text-slate-600 hover:bg-slate-100'}`}>
+                    <MessageCircle className="w-5 h-5" />
+                    {(friendRequests.length > 0 || Object.values(recentDMMessages).some(m => m.unread)) && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white"></span>}
+                  </button>
+                  <button onClick={handleOpenNotifications} className="relative p-1.5 text-slate-600 hover:bg-slate-100 rounded-full">
+                    <Bell className="w-5 h-5 text-slate-600" />
+                    {hasUnreadNotification && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white"></span>}
+                  </button>
+                  <img src={currentUser.avatar} alt="Profile" onClick={() => setCurrentTab('profile')} className={`w-7 h-7 rounded-full border object-cover cursor-pointer bg-indigo-50 ${currentTab === 'profile' ? 'border-indigo-600 ring-2 ring-indigo-200' : 'border-slate-200'}`} />
+                </div>
+              </div>
+            )}
+
+            {/* PAGE 1: HOME */}
+            {currentTab === 'home' && (
+              <div className="flex-1 overflow-y-auto px-4 pt-3 pb-24 space-y-3.5 no-scrollbar relative">
+                <div>
+                  <h1 className="text-xl font-bold text-slate-900">สวัสดี, {currentUser.name} 👋</h1>
+                  <p className="text-xs text-slate-500">หาเพื่อนติววิชาอะไร วันนี้?</p>
+                </div>
+
+                <div className="relative flex min-h-[158px] items-center overflow-hidden rounded-[28px] bg-gradient-to-br from-indigo-600 via-indigo-500 to-violet-700 p-3.5 text-white shadow-lg">
+                  <div className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/10" />
+                  <span aria-hidden="true" className="pointer-events-none absolute right-[118px] top-3 text-xl text-amber-200 animate-pulse">✦</span>
+                  <span aria-hidden="true" className="pointer-events-none absolute right-[104px] bottom-7 text-xs text-white/80">✦</span>
+                  <div className="relative z-10 flex min-w-0 flex-1 flex-col items-start gap-2">
+                    <span className="rounded-full border border-white/20 bg-white/15 px-2.5 py-1 text-[9px] font-bold tracking-wide text-indigo-50">🤖 BIT · STUDY BUDDY</span>
+                    <h2 className="text-base font-black leading-tight">{bitGreeting} วันนี้มาเริ่มติวกัน!</h2>
+                    <p className="min-h-[34px] rounded-2xl rounded-tl-sm bg-white/95 px-3 py-2 text-[10px] font-semibold leading-relaxed text-indigo-950 shadow-sm">
+                      {homeBitMessage}
+                    </p>
+                    <button onClick={() => homeSearchInputRef.current?.focus()} className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-950/25 px-2.5 py-1.5 text-[10px] font-bold text-white transition hover:bg-indigo-950/40 active:scale-95">
+                      ค้นหากลุ่มติว <Search className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setBitPhraseIndex(index => (index + 1) % bitPhrases.length); setBitMood('wave'); }}
+                    aria-label="คุยกับน้องบิต เปลี่ยนข้อความให้กำลังใจ"
+                    title="แตะเพื่อคุยกับน้องบิต"
+                    className="bit-hero-mascot relative z-10 -mr-2 flex h-[144px] w-[112px] shrink-0 items-end justify-center rounded-2xl transition-transform hover:scale-105 active:scale-95"
+                  >
+                    <StudyBuddyBit className="h-[136px] w-[112px]" mood={homeBitMood} />
+                  </button>
+                </div>
+
+                {allPendingRequests.length > 0 && (
+                  <div className="bg-[#EEF2FF] border border-indigo-200 p-3.5 rounded-2xl space-y-2 shadow-xl backdrop-blur-md">
+                    <div className="flex items-center justify-between text-indigo-950 font-bold text-xs">
+                      <span className="flex items-center gap-1.5"><ShieldAlert className="w-4 h-4 text-indigo-600 shrink-0" />คำขอเข้าร่วมกลุ่มติว ({allPendingRequests.length})</span>
+                    </div>
+                    <div className="space-y-2 pt-0.5">
+                      {allPendingRequests.map(req => (
+                        <div key={req.id} className="bg-white/90 border border-indigo-100 p-2.5 rounded-xl flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <h4 className="font-bold text-xs text-slate-900 truncate">{req.user_name}</h4>
+                            <p className="text-[10px] text-slate-500 truncate">ขอเข้าห้อง: {req.study_groups?.title || 'ห้องติวของคุณ'}</p>
+                          </div>
+                          <div className="flex gap-1.5 shrink-0">
+                            <button onClick={() => handleApproveMember(req.id, 'accepted')} className="bg-emerald-600 text-white font-bold px-3 py-1.5 rounded-xl text-[10px] flex items-center gap-1 hover:bg-emerald-700"><Check className="w-3.5 h-3.5" /> ยอมรับ</button>
+                            <button onClick={() => handleApproveMember(req.id, 'rejected')} className="bg-rose-500 text-white font-bold px-3 py-1.5 rounded-xl text-[10px] flex items-center gap-1 hover:bg-rose-600"><X className="w-3.5 h-3.5" /> ไม่ยอมรับ</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <button type="button" aria-label="เปิดแผนที่จุดนัดพบติว SPU Hub" onClick={() => setCurrentTab('map_page')} className="group w-full bg-gradient-to-r from-indigo-600 to-indigo-800 text-left text-white rounded-2xl p-3.5 flex items-center justify-between gap-2 cursor-pointer shadow-md transition-all duration-200 hover:shadow-lg hover:from-indigo-500 hover:to-indigo-700 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300">
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-xs">จุดนัดพบติว ม.ศรีปทุม (SPU Hub)</h4>
+                    <p className="text-[10px] text-indigo-100">พิกัดจุดติว BTS บางบัว • อาคาร 11, 5 และศูนย์อาหาร</p>
+                  </div>
+                  <div aria-hidden="true" className="relative h-11 w-[82px] shrink-0 overflow-hidden rounded-xl border border-white/25 bg-indigo-100/95 shadow-inner transition-transform duration-200 group-hover:scale-105">
+                    <svg viewBox="0 0 82 44" className="absolute inset-0 h-full w-full" fill="none">
+                      <rect width="82" height="44" rx="10" fill="#E0F2FE" />
+                      <path d="M-4 9 22 17 35 8 56 14 86 5M-5 35 18 28 34 39 53 29 86 36M12-4l8 18-5 17 8 18M48-5l-4 16 8 14-5 24M73-5l-8 18 7 15-4 19" stroke="#CBD5E1" strokeWidth="5" />
+                      <path d="M-4 9 22 17 35 8 56 14 86 5M-5 35 18 28 34 39 53 29 86 36" stroke="#FFFFFF" strokeWidth="2.2" />
+                      <path d="m60 3 4 6m-36 25 5 5m29 10-2-8" stroke="#86EFAC" strokeWidth="5" strokeLinecap="round" />
+                      <circle cx="42" cy="21" r="10" fill="#F97316" fillOpacity=".2" />
+                      <path d="M42 12.5c-4.1 0-7.4 3.2-7.4 7.2 0 5.3 7.4 12 7.4 12s7.4-6.7 7.4-12c0-4-3.3-7.2-7.4-7.2Z" fill="#F97316" stroke="#FFF7ED" strokeWidth="1.5" />
+                      <circle cx="42" cy="19.5" r="2.5" fill="white" />
+                    </svg>
+                    <span className="absolute bottom-0.5 right-0.5 grid h-5 w-5 place-items-center rounded-full bg-indigo-600 text-white shadow group-hover:bg-indigo-500"><ArrowRight className="h-3 w-3" /></span>
+                  </div>
+                </button>
+
+                <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-white via-indigo-50/70 to-violet-50/80 p-3.5 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[9px] font-bold text-indigo-600 shadow-sm"><Calendar className="h-3 w-3" /> นัดถัดไป</span>
+                      {nextUpcomingSchedule ? (
+                        <>
+                          <h3 className="mt-2 truncate text-xs font-extrabold text-slate-800">{nextUpcomingSchedule.group.title}</h3>
+                          <p className="mt-1 text-[10px] font-semibold text-slate-600">
+                            {nextUpcomingSchedule.date.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })}
+                            {nextUpcomingSchedule.group.date_time?.includes('|') ? ` · ${nextUpcomingSchedule.group.date_time.split('|')[1].trim()}` : ''}
+                          </p>
+                          <p className="mt-1 flex items-center gap-1 truncate text-[10px] text-slate-500"><MapPin className="h-3 w-3 shrink-0 text-orange-500" />{nextUpcomingSchedule.group.location}</p>
+                        </>
+                      ) : (
+                        <p className="mt-2 text-[11px] font-semibold text-slate-600">ยังไม่มีนัดที่กำลังจะถึง</p>
+                      )}
+                    </div>
+                    <button type="button" onClick={() => setCurrentTab('schedule')} className="shrink-0 self-center rounded-xl bg-indigo-600 px-3 py-2 text-[10px] font-bold text-white shadow-sm transition hover:bg-indigo-700 active:scale-95">
+                      ดูตาราง <ArrowRight className="ml-1 inline h-3 w-3" />
+                    </button>
+                  </div>
+                  {nextUpcomingSchedule && (
+                    <div className="mt-2 border-t border-indigo-100 pt-2 text-[9px] font-bold text-indigo-600">
+                      {nextUpcomingSchedule.date.toDateString() === todayStart.toDateString()
+                        ? 'นัดติววันนี้'
+                        : `อีก ${Math.ceil((new Date(nextUpcomingSchedule.date.getFullYear(), nextUpcomingSchedule.date.getMonth(), nextUpcomingSchedule.date.getDate()) - todayStart) / 86400000)} วัน`}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <div className="flex-1 bg-white border border-slate-200 rounded-2xl px-3.5 py-2.5 flex items-center gap-2">
+                    <Search className="w-4 h-4 text-slate-400" />
+                    <input ref={homeSearchInputRef} type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="ค้นหาวิชา (IELTS, Calculus) หรือ ค้นหาชื่อเพื่อน..." className="w-full text-xs outline-none bg-transparent" />
+                  </div>
+                </div>
+
+                {searchTerm.trim() !== '' && (
+                  <div className="space-y-2 bg-indigo-50/60 p-3 rounded-2xl border border-indigo-100">
+                    <span className="text-[10px] font-bold text-indigo-700 block">{isSearchingRealtime ? 'กำลังค้นหาเพื่อน...' : '👤 เพื่อนที่พบ:'}</span>
+                    {searchedFriends.map((u) => {
+                      const isAccepted = acceptedFriends.some(f => f.id === u.id);
+                      const isPendingSent = sentFriendRequests.some(r => r.receiver_id === u.id);
+                      return (
+                        <div key={u.id} className="bg-white p-2.5 rounded-2xl border border-slate-100 flex items-center justify-between">
+                          <div className="flex items-center gap-2.5"><img src={u.avatar} className="w-8 h-8 rounded-full object-cover border border-slate-200 bg-indigo-50" /><div><h4 className="font-bold text-xs text-slate-900">{u.name}</h4><p className="text-[9px] text-slate-400">{u.faculty}</p></div></div>
+                          {isAccepted ? <button onClick={() => handleOpenPrivateChat(u)} className="bg-[#4338CA] text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1"><MessageCircle className="w-3 h-3" /> ทักแชต</button> :
+                           isPendingSent ? <span className="bg-amber-50 text-amber-600 text-[9px] font-bold px-2.5 py-1.5 rounded-lg border border-amber-200">รอตอบรับ</span> :
+                           <button onClick={() => handleSendFriendRequest(u)} className="bg-indigo-50 text-indigo-600 text-[9px] font-bold px-2.5 py-1.5 rounded-lg border border-indigo-200 flex items-center gap-1"><UserPlus className="w-3 h-3" /> แอดเพื่อน</button>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar text-xs">
+                  {categories.map((cat) => (
+                    <button key={cat} aria-pressed={activeCategory === cat} onClick={() => setActiveCategory(cat)} className={`px-3.5 py-1.5 rounded-full font-medium whitespace-nowrap transition-colors ${activeCategory === cat ? 'bg-[#4338CA] text-white shadow-sm' : 'bg-white text-slate-600 border border-slate-200 hover:border-indigo-200 hover:text-indigo-700'}`}>{cat} <span className={`ml-0.5 text-[9px] ${activeCategory === cat ? 'text-indigo-200' : 'text-slate-400'}`}>{getCategoryCount(cat)}</span></button>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-semibold text-slate-400">เรียงตาม</span>
+                  <div className="flex gap-1.5">
+                    <button type="button" aria-pressed={groupSortMode === 'newest'} onClick={() => setGroupSortMode('newest')} className={`rounded-lg px-2.5 py-1.5 text-[9px] font-bold transition ${groupSortMode === 'newest' ? 'bg-indigo-100 text-indigo-700' : 'bg-white text-slate-500 ring-1 ring-slate-200'}`}>🆕 ใหม่ล่าสุด</button>
+                    <button type="button" aria-pressed={groupSortMode === 'capacity'} onClick={() => setGroupSortMode('capacity')} className={`rounded-lg px-2.5 py-1.5 text-[9px] font-bold transition ${groupSortMode === 'capacity' ? 'bg-indigo-100 text-indigo-700' : 'bg-white text-slate-500 ring-1 ring-slate-200'}`}>👥 ใกล้เต็ม</button>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <span className="text-[11px] font-bold text-slate-400 block uppercase">📚 ห้องติวที่พบ ({filteredGroups.length})</span>
+                  {filteredGroups.map((group) => (
+                    <div key={group.id} className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-2.5">
+                      <div className="flex justify-between items-center text-[10px] font-semibold">
+                        <span className="bg-indigo-50 text-[#4338CA] px-2.5 py-0.5 rounded-full font-bold">{group.subject}</span>
+                        <div className="flex items-center gap-2 text-slate-400">
+                          <span>{group.format === 'online' ? '💻 ออนไลน์' : '👥 นัดเจอ SPU'}</span>
+                          <span className="rounded-full bg-slate-50 px-2 py-0.5">{group.current_members || 1}/{group.max_members || 5} คน</span>
+                        </div>
+                      </div>
+                      <div><h3 className="font-bold text-slate-900 text-xs">{group.title}</h3><p className="text-[10px] text-slate-500 mt-0.5">{group.description}</p></div>
+                      <div className="text-[10px] text-slate-600 space-y-1">
+                        <div className="flex items-center gap-1.5"><Calendar className="w-3 h-3 text-indigo-500" /><span>{group.date_time}</span></div>
+                        <div className="flex items-center gap-1.5"><MapPin className="w-3 h-3 text-orange-500" /><span>{group.location}</span></div>
+                      </div>
+                      <div className="pt-2 flex items-center justify-between border-t border-slate-100">
+                        <span className="text-[10px] text-slate-400">สร้างโดย: <b>{group.host_name}</b></span>
+                        <button onClick={() => handleRequestJoinRoom(group)} className="bg-[#4338CA] text-white text-[10px] font-semibold px-3.5 py-2 rounded-xl flex items-center gap-1">เข้าร่วมกลุ่มติว <ArrowRight className="w-3 h-3" /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* PAGE 2: REALTIME ROOM CHAT */}
+            {currentTab === 'room_chat' && selectedGroup && (
+              <div className="flex-1 flex flex-col bg-[#F8FAFC] relative overflow-hidden pb-[60px]">
+                <div className="bg-white px-4 pt-5 pb-3 border-b border-slate-200 shrink-0 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setCurrentTab('my_groups')} className="p-1 rounded-full hover:bg-slate-100"><ArrowLeft className="w-5 h-5 text-slate-700" /></button>
+                      <div className="flex-1 min-w-0"><span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-2 py-0.5 rounded-full">● แชตสด Realtime</span><h2 className="font-bold text-slate-900 text-xs truncate mt-0.5">{selectedGroup.title}</h2></div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => setShowMemberListModal(true)} className="p-1.5 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold flex items-center gap-1 border border-indigo-100 relative">
+                        <Users className="w-3.5 h-3.5" /> รายชื่อ {isHost(selectedGroup) && pendingMembers.length > 0 && <span className="w-2 h-2 bg-rose-500 rounded-full absolute -top-0.5 -right-0.5 animate-ping"></span>}
+                      </button>
+                      {isHost(selectedGroup) ? (
+                        <>
+                          <button onClick={handleOpenEditGroupModal} className="p-1.5 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold flex items-center gap-1"><Edit className="w-3.5 h-3.5" /></button>
+                          <button onClick={handleDeleteGroup} className="p-1.5 bg-rose-50 text-rose-600 rounded-xl text-xs font-bold flex items-center gap-1 border border-rose-200" title="ยุบห้องติว"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </>
+                      ) : (
+                        <button onClick={() => handleLeaveGroup(selectedGroup)} className="p-1.5 bg-rose-50 text-rose-600 rounded-xl text-xs font-bold flex items-center gap-1 border border-rose-200" title="ออกจากกลุ่ม"><LeaveIcon className="w-3.5 h-3.5" /></button>
+                      )}
+                    </div>
+                  </div>
+
+                  {isHost(selectedGroup) && pendingMembers.length > 0 && (
+                    <div className="bg-[#EEF2FF] border border-indigo-200 p-3 rounded-2xl space-y-2 shadow-md">
+                      <div className="flex items-center justify-between text-indigo-950 font-bold text-[11px]">
+                        <span className="flex items-center gap-1"><ShieldAlert className="w-3.5 h-3.5 text-indigo-600" /> คำขอเข้าร่วมห้องนี้ ({pendingMembers.length})</span>
+                      </div>
+                      {pendingMembers.map(m => (
+                        <div key={m.id} className="bg-white/90 border border-indigo-100 p-2 rounded-xl flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <img src={m.user_avatar || cartoonAvatars[0].url} className="w-7 h-7 rounded-full object-cover border bg-indigo-50" />
+                            <span className="font-bold text-xs text-slate-900 truncate">{m.user_name}</span>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <button onClick={() => handleApproveMember(m.id, 'accepted')} className="bg-emerald-600 text-white font-bold px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-0.5 hover:bg-emerald-700"><Check className="w-3 h-3" /> ยอมรับ</button>
+                            <button onClick={() => handleApproveMember(m.id, 'rejected')} className="bg-rose-500 text-white font-bold px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-0.5 hover:bg-rose-600"><X className="w-3 h-3" /> ไม่ยอมรับ</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="bg-gradient-to-br from-indigo-50/90 to-slate-50 border border-indigo-100 rounded-2xl p-3 space-y-2 text-[10px]">
+                    <div className="flex items-center justify-between border-b border-indigo-100/60 pb-1.5">
+                      <span className="bg-[#4338CA] text-white px-2.5 py-0.5 rounded-md font-bold text-[9px]">{selectedGroup.subject || 'ติวทั่วไป'}</span>
+                      <span className="text-slate-600 font-bold flex items-center gap-1"><Users className="w-3 h-3 text-indigo-600" /> สมาชิก ({selectedGroup.current_members || 1}/{selectedGroup.max_members || 5} คน)</span>
+                    </div>
+                    <div className="text-slate-600 leading-snug space-y-1"><p>{selectedGroup.description}</p><p className="text-[9px] text-slate-400 font-semibold">👑 หัวหน้าห้อง: <b className="text-slate-700">{selectedGroup.host_name}</b></p></div>
+                    <div className="flex items-center justify-between text-slate-500 pt-1 border-t border-indigo-100/40">
+                      <div className="flex items-center gap-1"><Calendar className="w-3 h-3 text-indigo-600" /><span>{selectedGroup.date_time}</span></div>
+                      <div className="flex items-center gap-1"><MapPin className="w-3 h-3 text-orange-500" /><span>{selectedGroup.location}</span></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  ref={roomChatContainerRef}
+                  onScroll={handleRoomChatScroll}
+                  style={{ backgroundImage: 'radial-gradient(ellipse at 14% 12%, rgba(199,210,254,.42), transparent 38%), radial-gradient(ellipse at 88% 82%, rgba(167,243,208,.3), transparent 34%), linear-gradient(145deg, #fbfcff 0%, #f4f6ff 52%, #f8fafc 100%)' }}
+                  className="relative flex-1 overflow-y-auto p-4 space-y-3 text-xs no-scrollbar"
+                >
+                  {newRoomMessagesCount > 0 && (
+                    <div className="sticky top-1 z-20 -mb-8 flex justify-center">
+                      <button type="button" onClick={() => roomChatContainerRef.current?.scrollTo({ top: roomChatContainerRef.current.scrollHeight, behavior: 'smooth' })} className="rounded-full bg-indigo-600 px-3 py-1.5 text-[10px] font-bold text-white shadow-lg transition hover:bg-indigo-700">
+                        ↓ {newRoomMessagesCount} ข้อความใหม่
+                      </button>
+                    </div>
+                  )}
+                  {isRoomChatLoading && roomChatMessages.length === 0 && (
+                    <div className="flex min-h-full items-center justify-center">
+                      <div className="rounded-2xl border border-white/80 bg-white/75 px-4 py-3 text-[11px] font-semibold text-slate-500 shadow-sm backdrop-blur-sm">
+                        <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-indigo-500" />กำลังเปิดห้องแชต...
+                      </div>
+                    </div>
+                  )}
+
+                  {!isRoomChatLoading && roomChatLoadError && (
+                    <div className="flex min-h-full items-center justify-center px-4 text-center">
+                      <div className="rounded-2xl border border-rose-100 bg-white/85 px-5 py-4 text-[11px] text-rose-700 shadow-sm">
+                        โหลดข้อความไม่สำเร็จ ลองออกจากห้องแล้วเข้าใหม่อีกครั้งนะ
+                      </div>
+                    </div>
+                  )}
+
+                  {!isRoomChatLoading && !roomChatLoadError && roomChatMessages.length === 0 && (
+                    <div className="flex min-h-full flex-col items-center justify-center px-1 py-5 text-center">
+                      <div className="bit-hero-mascot relative mb-1 grid h-[126px] w-[126px] place-items-center">
+                        <span aria-hidden="true" className="absolute inset-2 rounded-full bg-indigo-200/45 blur-2xl" />
+                        <StudyBuddyBit className="relative z-10 h-[118px] w-[108px]" mood="wave" />
+                        <span aria-hidden="true" className="absolute right-3 top-2 text-lg text-amber-400 animate-pulse">✦</span>
+                        <span aria-hidden="true" className="absolute bottom-5 left-2 text-xs text-indigo-300">✦</span>
+                      </div>
+                      <div className="w-full max-w-sm rounded-[24px] border border-white/90 bg-white/80 px-4 py-4 shadow-[0_12px_32px_rgba(79,70,229,0.08)] backdrop-blur-sm">
+                        <span className="mb-2 inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-[9px] font-bold text-indigo-600"><Sparkles className="h-3 w-3" /> เริ่มต้นห้องติว</span>
+                        <h3 className="text-sm font-extrabold text-slate-800">ห้องนี้ยังไม่มีข้อความ</h3>
+                        <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+                          {isApprovedMember(selectedGroup) ? 'น้องบิตพร้อมช่วยเปิดบทสนทนาแล้ว ชวนเพื่อนเริ่มคุยกันได้เลย!' : 'รอหัวหน้าห้องอนุมัติก่อน แล้วค่อยมาร่วมพูดคุยกับเพื่อน ๆ นะ'}
+                        </p>
+                        {isApprovedMember(selectedGroup) && (
+                          <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+                            {['👋 สวัสดีทุกคน', 'วันนี้ติวเรื่องอะไรกันดี?', 'สะดวกนัดติววันไหน?'].map((prompt) => (
+                              <button
+                                key={prompt}
+                                type="button"
+                                onClick={() => { setRoomChatMsg(prompt); roomChatInputRef.current?.focus(); }}
+                                className="rounded-full border border-indigo-100 bg-white px-2.5 py-1.5 text-[9px] font-semibold text-indigo-700 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:bg-indigo-50 active:translate-y-0"
+                              >
+                                {prompt}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {roomChatMessages.map((m, index) => {
+                    const isMe = m.sender_name === currentUser.name;
+                    const isImage = m.text?.startsWith('[IMAGE]:');
+                    const startsNewDay = index === 0 || getMessageDayKey(roomChatMessages[index - 1]?.created_at) !== getMessageDayKey(m.created_at);
+                    return (
+                      <React.Fragment key={m.id}>
+                        {startsNewDay && (
+                          <div className="flex justify-center py-1"><span className="rounded-full border border-white/90 bg-white/80 px-3 py-1 text-[9px] font-bold text-slate-500 shadow-sm">{formatMessageDayLabel(m.created_at)}</span></div>
+                        )}
+                        {String(m.id) === newRoomMessageMarkerId && (
+                          <div className="flex items-center gap-2 py-1 text-[9px] font-bold text-rose-500"><span className="h-px flex-1 bg-rose-200" /><span>ข้อความใหม่</span><span className="h-px flex-1 bg-rose-200" /></div>
+                        )}
+                        <div className={`flex gap-2 ${isMe ? 'justify-end' : ''} ${String(m.id) === animatedRoomMessageId ? 'room-message-enter' : ''}`}>
+                          {!isMe && <img src={m.sender_avatar || cartoonAvatars[0].url} className="w-7 h-7 rounded-full object-cover shrink-0 mt-1 border bg-indigo-50" />}
+                          <div className={`max-w-[78%] space-y-0.5 flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                            <span className="text-[9px] text-slate-400 px-1">{m.sender_name}</span>
+                            <div className={`p-3 rounded-2xl leading-relaxed ${isMe ? 'bg-[#4338CA] text-white rounded-tr-none' : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'}`}>
+                              {isImage ? <img src={m.text.replace('[IMAGE]:', '')} className="rounded-xl max-h-48 object-cover" /> : m.text}
+                            </div>
+                            <span className="text-[8px] text-slate-400 px-1">{formatTime(m.created_at)}</span>
+                          </div>
+                          {isMe && <img src={currentUser.avatar} className="w-7 h-7 rounded-full object-cover shrink-0 mt-1 border bg-indigo-50" />}
+                        </div>
+                      </React.Fragment>
+                    );
+                  })}
+                  <div ref={chatEndRef} />
+                </div>
+
+                {isApprovedMember(selectedGroup) ? (
+                  <div className="bg-white p-2.5 border-t border-slate-200 flex items-center gap-2 shrink-0 z-10">
+                    <label className="p-2 text-slate-500 hover:text-indigo-600 cursor-pointer">
+                      <Paperclip className="w-4 h-4" />
+                      <input type="file" accept="image/*" onChange={(e) => handleChatFileUpload(e, false)} className="hidden" />
+                    </label>
+                    <input ref={roomChatInputRef} type="text" value={roomChatMsg} onChange={(e) => setRoomChatMsg(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleSendRoomMsg(); }} placeholder="พิมพ์ข้อความ..." className="flex-1 bg-slate-100 rounded-xl px-3.5 py-2 text-xs outline-none" />
+                    <button type="button" aria-label="ส่งข้อความ" onClick={() => handleSendRoomMsg()} className="group bg-[#4338CA] text-white p-2 rounded-xl shadow-sm transition hover:bg-indigo-700 active:scale-90">
+                      <Send className={`h-4 w-4 transition-transform ${isRoomSendAnimating ? 'room-plane-send' : 'group-hover:-translate-y-0.5 group-hover:translate-x-0.5'}`} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="bg-amber-50 p-3 border-t border-amber-200 text-center text-amber-800 text-xs font-bold shrink-0 z-10">
+                    🔒 คุณต้องได้รับการอนุมัติจากหัวหน้าห้องก่อนจึงจะสามารถพิมพ์คุยได้
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* PAGE 2.5: PRIVATE CHAT */}
+            {currentTab === 'private_chat' && activePrivateMember && (
+              <div className="flex-1 flex flex-col bg-[#F8FAFC] relative overflow-hidden pb-[60px]">
+                <div className="bg-white px-4 pt-5 pb-3 border-b border-slate-200 shrink-0 flex items-center justify-between shadow-xs">
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setCurrentTab('my_groups')} className="p-1.5 rounded-full hover:bg-slate-100 text-slate-700"><ArrowLeft className="w-5 h-5" /></button>
+                    <div className="relative">
+                      <img src={activePrivateMember.avatar || cartoonAvatars[0].url} alt={activePrivateMember.name} className="w-10 h-10 rounded-full object-cover border border-slate-200 bg-indigo-50" />
+                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white"></span>
+                    </div>
+                    <div>
+                      <h2 className="font-bold text-slate-900 text-xs leading-tight">{activePrivateMember.name}</h2>
+                      <span className="text-[9px] text-emerald-600 font-bold flex items-center gap-1">● กำลังใช้งาน</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div ref={privateChatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 text-xs no-scrollbar">
+                  {privateMessages.map((pm, index) => {
+                    const isMe = pm.sender_id === user?.id;
+                    const isImage = pm.text?.startsWith('[IMAGE]:');
+
+                    return (
+                      <div key={pm.id || index} className={`flex gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                        {!isMe && <img src={activePrivateMember.avatar || cartoonAvatars[0].url} className="w-7 h-7 rounded-full object-cover shrink-0 mt-1 border bg-indigo-50" />}
+                        <div className={`max-w-[78%] space-y-0.5 flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                          <div className={`p-3 rounded-2xl leading-relaxed ${isMe ? 'bg-[#4338CA] text-white rounded-tr-none' : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'}`}>
+                            {isImage ? <img src={pm.text.replace('[IMAGE]:', '')} className="rounded-xl max-h-48 object-cover" /> : pm.text}
+                          </div>
+                          <span className="text-[8px] text-slate-400 px-1">{formatTime(pm.created_at)}</span>
+                        </div>
+                        {isMe && <img src={currentUser.avatar} className="w-7 h-7 rounded-full object-cover shrink-0 mt-1 border bg-indigo-50" />}
+                      </div>
+                    );
+                  })}
+                  <div ref={chatEndRef} />
+                </div>
+
+                <div className="bg-white p-2.5 border-t border-slate-200 flex items-center gap-2 shrink-0 z-10">
+                  <label className="p-2 text-slate-500 hover:text-indigo-600 cursor-pointer">
+                    <Paperclip className="w-4 h-4" />
+                    <input type="file" accept="image/*" onChange={(e) => handleChatFileUpload(e, true)} className="hidden" />
+                  </label>
+                  <input type="text" value={privateMsgInput} onChange={(e) => setPrivateMsgInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleSendPrivateMsg(); }} placeholder="พิมพ์ข้อความส่วนตัว..." className="flex-1 bg-slate-100 rounded-xl px-3.5 py-2 text-xs outline-none" />
+                  <button onClick={() => handleSendPrivateMsg()} className="bg-[#4338CA] text-white p-2 rounded-xl"><Send className="w-4 h-4" /></button>
+                </div>
+              </div>
+            )}
+
+            {/* PAGE 3: CHATS LIST HUB */}
+            {currentTab === 'my_groups' && (
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar pb-24 pt-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div><h2 className="text-xl font-bold text-slate-900 pt-1">รายการแชตทั้งหมด 📚💬</h2><p className="text-xs text-slate-500">รวมทั้งห้องติวและแชตส่วนตัวกับเพื่อน</p></div>
+                  <StudyBuddyBit className="h-14 w-12 shrink-0" />
+                </div>
+                <div className="bg-white border border-slate-200 rounded-2xl px-3 py-2 flex items-center gap-2">
+                  <Search className="w-4 h-4 text-slate-400" />
+                  <input type="text" value={friendSearchTerm} onChange={(e) => setFriendSearchTerm(e.target.value)} placeholder="ค้นหาชื่อเพื่อน..." className="w-full text-xs outline-none bg-transparent" />
+                </div>
+
+                {friendRequests.length > 0 && (
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-3 space-y-2">
+                    <span className="text-[10px] font-bold text-indigo-900 block">👋 คำขอเป็นเพื่อนใหม่ ({friendRequests.length})</span>
+                    {friendRequests.map(req => (
+                      <div key={req.id} className="bg-white p-2 rounded-xl flex items-center justify-between border border-indigo-100">
+                        <span className="text-xs font-bold text-slate-800">{req.sender_name}</span>
+                        <button onClick={() => handleAcceptFriendRequest(req)} className="bg-indigo-600 text-white text-[10px] font-bold px-3 py-1 rounded-lg flex items-center gap-1"><Check className="w-3 h-3" /> ยอมรับ</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="space-y-3 pt-1">
+                  <span className="text-[11px] font-bold text-slate-400 block uppercase">📢 ห้องติวของฉัน</span>
+                  {isGroupsLoading ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-5 text-center text-xs text-slate-500">กำลังโหลดกลุ่มติว...</div>
+                  ) : groupsLoadError && studyGroups.length === 0 ? (
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-5 text-center">
+                      <p className="text-xs font-semibold text-rose-700">โหลดกลุ่มติวไม่สำเร็จ</p>
+                      <button onClick={() => { setIsGroupsLoading(true); fetchGroupsFromSupabase(); }} className="mt-3 rounded-xl bg-white px-3 py-2 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200">ลองอีกครั้ง</button>
+                    </div>
+                  ) : myJoinedGroups.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-indigo-200 bg-white px-4 py-6 text-center shadow-xs">
+                      <div className="mx-auto mb-2 flex h-[88px] w-[88px] items-center justify-center">
+                        <StudyBuddyBit className="h-[84px] w-[76px]" />
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-800">ยังไม่มีกลุ่มติวของคุณ</h3>
+                      <p className="mx-auto mt-1 max-w-[230px] text-[11px] leading-relaxed text-slate-500">
+                        ลองค้นหาห้องที่สนใจ หรือสร้างห้องชวนเพื่อนมาอ่านด้วยกัน
+                      </p>
+                      <div className="mt-4 flex justify-center gap-2">
+                        <button onClick={() => setCurrentTab('home')} className="rounded-xl bg-[#4338CA] px-3 py-2 text-[11px] font-bold text-white">
+                          <Search className="mr-1 inline h-3.5 w-3.5" /> ค้นหาห้อง
+                        </button>
+                        <button onClick={() => { setIsEditingGroup(false); setCurrentTab('create'); }} className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] font-bold text-indigo-700">
+                          <Plus className="mr-1 inline h-3.5 w-3.5" /> สร้างห้อง
+                        </button>
+                      </div>
+                    </div>
+                  ) : myJoinedGroups.map((group) => {
+                    const groupPreview = recentGroupMessages[group.id]; const isUnread = groupPreview?.unread;
+                    return (
+                      <div key={`group-${group.id}`} onClick={() => handleRequestJoinRoom(group)} className={`bg-white border rounded-2xl p-3.5 shadow-xs cursor-pointer flex items-center justify-between ${isUnread ? 'border-indigo-500 bg-indigo-50/20' : 'border-slate-200'}`}>
+                        <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
+                          <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0"><Users className="w-5 h-5" /></div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex justify-between items-center mb-0.5"><h3 className={`text-xs truncate ${isUnread ? 'font-black text-indigo-950' : 'font-bold text-slate-900'}`}>{group.title}</h3><span className="text-[9px] text-slate-400">{groupPreview?.time || ''}</span></div>
+                            <p className={`text-[11px] truncate ${isUnread ? 'font-bold text-indigo-700' : 'text-slate-500'}`}>{groupPreview?.text || group.description || 'คลิกเพื่อเข้าสู่ห้องติว'}</p>
+                          </div>
+                        </div>
+                        {isUnread && <span className="w-3.5 h-3.5 bg-rose-500 rounded-full border-2 border-white shrink-0 animate-pulse"></span>}
+                      </div>
+                    );
+                  })}
+
+                  <span className="text-[11px] font-bold text-slate-400 block uppercase pt-2">💬 แชตส่วนตัวกับเพื่อน</span>
+                  {sortedAcceptedFriends.map((usr) => {
+                    const fName = (usr.display_name || usr.email.split('@')[0]).replace(/\s*\(นักศึกษา SPU\)/g, ''); 
+                    const dmPreview = recentDMMessages[usr.id]; 
+                    const isUnread = dmPreview?.unread;
+                    return (
+                      <div key={`friend-${usr.id}`} onClick={() => handleOpenPrivateChat({ id: usr.id, name: fName, avatar: usr.avatar })} className={`bg-white border rounded-2xl p-3.5 shadow-xs cursor-pointer flex items-center justify-between ${isUnread ? 'border-indigo-500 bg-indigo-50/20' : 'border-slate-200'}`}>
+                        <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
+                          <div className="relative shrink-0">
+                            <img src={usr.avatar || cartoonAvatars[0].url} className="w-11 h-11 rounded-full object-cover border border-slate-200 bg-indigo-50" />
+                            <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white"></span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex justify-between items-center mb-0.5">
+                              <h4 className={`text-xs truncate ${isUnread ? 'font-black text-indigo-950' : 'font-bold text-slate-900'}`}>{fName}</h4>
+                              <span className="text-[9px] text-slate-400">{dmPreview?.time || ''}</span>
+                            </div>
+                            <p className={`text-[11px] truncate ${isUnread ? 'font-bold text-indigo-900' : 'text-slate-500'}`}>{dmPreview?.text || 'คลิกเพื่อเปิดหน้าต่างแชตส่วนตัว'}</p>
+                          </div>
+                        </div>
+                        {isUnread ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-[9px] font-bold text-rose-500">ข้อความใหม่</span>
+                            <span className="w-3.5 h-3.5 bg-rose-500 rounded-full border-2 border-white shrink-0 animate-pulse"></span>
+                          </div>
+                        ) : (
+                          <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* PAGE 5: SCHEDULE */}
+            {currentTab === 'schedule' && (
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar pb-24">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-lg font-bold text-slate-900 pt-1">ตารางนัดติวของฉัน 📅</h2>
+                  <StudyBuddyBit className="h-14 w-12 shrink-0" />
+                </div>
+                <div className="space-y-3 pt-2">
+                  {isGroupsLoading ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-5 text-center text-xs text-slate-500">กำลังโหลดตารางนัด...</div>
+                  ) : groupsLoadError && studyGroups.length === 0 ? (
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-5 text-center">
+                      <p className="text-xs font-semibold text-rose-700">โหลดตารางนัดไม่สำเร็จ</p>
+                      <button onClick={() => { setIsGroupsLoading(true); fetchGroupsFromSupabase(); }} className="mt-3 rounded-xl bg-white px-3 py-2 text-[11px] font-bold text-rose-700 ring-1 ring-rose-200">ลองอีกครั้ง</button>
+                    </div>
+                  ) : myJoinedGroups.length === 0 ? (
+                    <div className="rounded-3xl border border-dashed border-indigo-200 bg-white px-5 py-8 text-center shadow-sm">
+                      <div className="mx-auto mb-2 flex h-[92px] w-[92px] items-center justify-center">
+                        <StudyBuddyBit className="h-[88px] w-[80px]" />
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-800">ยังไม่มีนัดติว</h3>
+                      <p className="mx-auto mt-1 max-w-[230px] text-xs leading-relaxed text-slate-500">
+                        เมื่อคุณเข้าร่วมหรือสร้างกลุ่ม นัดติวจะปรากฏในหน้านี้
+                      </p>
+                      <button onClick={() => setCurrentTab('home')} className="mt-4 rounded-xl bg-[#4338CA] px-4 py-2.5 text-xs font-bold text-white">
+                        <Search className="mr-1.5 inline h-3.5 w-3.5" /> ค้นหากลุ่มติว
+                      </button>
+                    </div>
+                  ) : myJoinedGroups.map((group) => (
+                    <div key={group.id} className="bg-white border border-slate-200 rounded-3xl p-4 shadow-sm space-y-2.5">
+                      <div className="flex justify-between items-center"><span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-2.5 py-0.5 rounded-full">● นัดหมายยืนยันแล้ว</span><span className="text-[10px] font-bold text-indigo-600">{group.subject}</span></div>
+                      <h3 className="font-bold text-slate-900 text-xs">{group.title}</h3>
+                      <div className="bg-slate-50 p-2.5 rounded-2xl space-y-1 text-[10px] text-slate-600">
+                        <div className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-indigo-600" /><span className="font-semibold text-slate-800">{group.date_time}</span></div>
+                        <div className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-orange-500" /><span>{group.location}</span></div>
+                      </div>
+                      <div className="pt-1 flex justify-between items-center border-t border-slate-100">
+                        {isHost(group) ? (
+                          <button onClick={() => handleCancelSchedule(group)} className="bg-rose-50 text-rose-600 text-[10px] font-bold px-3 py-1.5 rounded-xl border border-rose-100 flex items-center gap-1"><X className="w-3.5 h-3.5" /> ยกเลิก/ลบห้องติว</button>
+                        ) : (
+                          <button onClick={() => handleLeaveGroup(group)} className="bg-slate-100 text-slate-600 text-[10px] font-bold px-3 py-1.5 rounded-xl flex items-center gap-1"><LeaveIcon className="w-3.5 h-3.5" /> ออกจากกลุ่ม</button>
+                        )}
+                        <button onClick={() => handleRequestJoinRoom(group)} className="bg-[#4338CA] text-white text-[10px] font-bold px-3 py-1.5 rounded-xl">เข้าห้องแชต</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* PAGE 6: CREATE/EDIT GROUP */}
+            {currentTab === 'create' && (
+              <div className="flex-1 overflow-y-auto p-5 pb-24 space-y-4 no-scrollbar">
+                <div>
+                  <span className="bg-indigo-50 text-[#4338CA] text-[10px] px-2.5 py-1 rounded-full font-bold">🌍 ติวได้ทุกวิชา/ทุกภาษา</span>
+                  <h2 className="text-xl font-bold text-slate-900 mt-1">{isEditingGroup ? 'แก้ไขข้อมูลห้องติว ✏️' : 'สร้างห้องติวใหม่ 📚'}</h2>
+                </div>
+                <div className="space-y-3">
+                  <div><label className="text-xs font-bold text-slate-700">ชื่อวิชา / หัวข้อที่อยากติว *</label><input type="text" value={customSubject} onChange={(e) => setCustomSubject(e.target.value)} placeholder="เช่น IELTS, Calculus I" className="w-full bg-white border border-slate-200 rounded-2xl p-3 text-xs mt-1 outline-none" /></div>
+                  <div><label className="text-xs font-bold text-slate-700">ชื่อห้อง / หัวข้อย่อย *</label><input type="text" value={groupTitle} onChange={(e) => setGroupTitle(e.target.value)} placeholder="เช่น ตะลุยโจทย์ Reading" className="w-full bg-white border border-slate-200 rounded-2xl p-3 text-xs mt-1 outline-none" /></div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700">เลือกหมวดหมู่</label>
+                    <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full bg-white border border-slate-200 rounded-2xl p-3 text-xs mt-1 outline-none">
+                      <option value="ภาษาต่างประเทศ">ภาษาต่างประเทศ</option><option value="วิชาการ">วิชาการ/มหาวิทยาลัย</option><option value="เทคโนโลยี/ไอที">เทคโนโลยี/ไอที</option><option value="ทักษะทั่วไป">ทักษะทั่วไป (Soft Skills)</option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700">วันที่นัดติว</label>
+                      <input type="date" value={groupDate} onChange={(e) => setGroupDate(e.target.value)} className="w-full bg-white border border-slate-200 rounded-2xl p-2.5 text-xs mt-1 outline-none text-slate-700" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-700">ช่วงเวลาติว</label>
+                      <select value={groupTime} onChange={(e) => setGroupTime(e.target.value)} className="w-full bg-white border border-slate-200 rounded-2xl p-2.5 text-xs mt-1 outline-none">
+                        <option value="09:00 - 12:00 น.">09:00 - 12:00 น.</option>
+                        <option value="13:00 - 15:00 น.">13:00 - 15:00 น.</option>
+                        <option value="15:00 - 17:00 น.">15:00 - 17:00 น.</option>
+                        <option value="17:00 - 19:00 น.">17:00 - 19:00 น.</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div><label className="text-xs font-bold text-slate-700">จำนวนรับสูงสุด (คน)</label><input type="number" min="2" max="20" value={maxMembersInput} onChange={(e) => setMaxMembersInput(e.target.value)} className="w-full bg-white border border-slate-200 rounded-2xl p-3 text-xs mt-1 outline-none" /></div>
+
+                  <div><label className="text-xs font-bold text-slate-700">รายละเอียดเพิ่มเติม</label><textarea value={groupDescription} onChange={(e) => setGroupDescription(e.target.value)} placeholder="รายละเอียดเพิ่มเติม..." className="w-full bg-white border border-slate-200 rounded-2xl p-3 text-xs mt-1 outline-none h-20" /></div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700">พิกัดจุดนัดพบ (SPU Hub)</label>
+                    <select value={locationText} onChange={(e) => setLocationText(e.target.value)} className="w-full bg-white border border-slate-200 rounded-2xl p-3 text-xs mt-1 outline-none">
+                      <option value="อาคาร 11 ชั้น 5 (สำนักหอสมุด SPU)">อาคาร 11 ชั้น 5 (สำนักหอสมุด SPU)</option>
+                      <option value="อาคาร 5 ชั้น 8 (คณะ IT SPU)">อาคาร 5 ชั้น 8 (คณะ IT SPU)</option>
+                      <option value="ศูนย์อาหาร 2 (อาคาร 10 ชั้น 1)">ศูนย์อาหาร 2 (อาคาร 10 ชั้น 1)</option>
+                      <option value="Google Meet (ออนไลน์)">Google Meet (ออนไลน์)</option>
+                    </select>
+                  </div>
+                  <button onClick={handleSaveGroup} className="w-full bg-[#4338CA] text-white font-bold py-3 rounded-2xl text-xs mt-2">{isEditingGroup ? 'บันทึกการแก้ไข' : 'ยืนยันสร้างห้องติว'}</button>
+                </div>
+              </div>
+            )}
+
+            {/* PAGE 7: MAP PAGE */}
+            {currentTab === 'map_page' && (
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar pb-24">
+                <div className="flex items-center gap-2"><button onClick={() => setCurrentTab('home')} className="p-1 rounded-full hover:bg-slate-100"><ArrowLeft className="w-5 h-5 text-slate-700" /></button><h2 className="text-lg font-bold text-slate-900">แผนที่จุดนัดพบ SPU Hub</h2></div>
+                <div className="bg-white border border-slate-200 rounded-3xl p-3 space-y-3 shadow-xs">
+                  <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 h-[560px] relative">
+                    <iframe
+                      src="/campus-map.html"
+                      title="แผนที่แคมปัส 3D และจุดนัดติว SPU"
+                      loading="lazy"
+                      allow="fullscreen"
+                      className="w-full h-full border-0"
+                    />
+                  </div>
+                  <div className="p-3 bg-indigo-50/60 rounded-2xl border border-indigo-100 space-y-1"><span className="font-bold text-indigo-900 text-xs block">📍 อาคาร 11 ชั้น 5 (สำนักหอสมุด SPU)</span><p className="text-[10px] text-slate-500">มีโซน Silent Discussion พร้อมปลั๊กไฟและ Wi-Fi ฟรี</p></div>
+                </div>
+              </div>
+            )}
+
+            {/* PAGE 8: PROFILE */}
+            {currentTab === 'profile' && (
+              <div className="flex-1 overflow-y-auto p-5 pb-24 space-y-4 no-scrollbar pt-4">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2"><button onClick={() => setCurrentTab('home')} className="p-1 rounded-full hover:bg-slate-100"><ArrowLeft className="w-5 h-5 text-slate-700" /></button><h2 className="text-lg font-bold text-slate-900">โปรไฟล์ผู้ใช้งาน</h2></div>
+                <div className="bg-white border border-slate-200 rounded-3xl p-5 text-center space-y-3 shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => avatarFileInputRef.current?.click()}
+                    aria-label="แตะเพื่อเปลี่ยนรูปโปรไฟล์"
+                    className="group relative block w-20 h-20 mx-auto rounded-full focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-200"
+                  >
+                    <img src={currentUser.avatar} alt="" className="w-20 h-20 rounded-full border-4 border-indigo-100 object-cover bg-indigo-50" />
+                    <span className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-indigo-600 text-white shadow-sm">
+                      <Camera className="h-3.5 w-3.5" />
+                    </span>
+                  </button>
+                  <p className="text-[10px] text-slate-500">แตะรูปเพื่อเปลี่ยน</p>
+                  <input
+                    ref={avatarFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    aria-label="เลือกรูปโปรไฟล์"
+                  />
+                  <div><h2 className="text-lg font-bold text-slate-900">{currentUser.name}</h2><p className="text-xs text-indigo-600 font-semibold">{user ? user.email : 'ไม่ได้เข้าสู่ระบบ'}</p></div>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-3xl p-4 space-y-2.5 shadow-sm text-xs">
+                  <h3 className="font-bold text-slate-800 border-b border-slate-100 pb-2">เพศของผู้ใช้งาน (Gender)</h3>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleGenderChange('ชาย')} className={`flex-1 py-2.5 rounded-xl font-bold border ${selectedGender === 'ชาย' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-600'}`}>👦 ชาย</button>
+                    <button onClick={() => handleGenderChange('หญิง')} className={`flex-1 py-2.5 rounded-xl font-bold border ${selectedGender === 'หญิง' ? 'bg-pink-600 text-white' : 'bg-slate-50 text-slate-600'}`}>👧 หญิง</button>
+                  </div>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-3xl p-4 space-y-3 shadow-sm text-xs">
+                  <div className="flex justify-between items-center border-b border-slate-100 pb-2"><h3 className="font-bold text-slate-800">เลือกรูปโปรไฟล์ (Avatar)</h3></div>
+                  <div className="grid grid-cols-3 gap-3 pt-1">
+                    {cartoonAvatars.map((item) => (
+                      <img key={item.id} src={item.url} onClick={() => handleSelectAvatar(item.url)} className={`w-14 h-14 rounded-full object-cover cursor-pointer border-2 bg-indigo-50 ${currentUser.avatar === item.url ? 'border-indigo-600 ring-2 ring-indigo-200' : 'border-slate-200'}`} />
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => avatarFileInputRef.current?.click()} className="w-full bg-slate-50 border border-dashed border-indigo-300 text-indigo-700 font-bold py-2.5 px-3 rounded-2xl text-xs flex items-center justify-center gap-2 cursor-pointer">
+                    <span>📁 อัปโหลดรูปจากมือถือ / คอมพิวเตอร์</span>
+                  </button>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-3xl p-4 space-y-3 text-xs">
+                  <div><label className="text-[10px] font-bold text-slate-500 block mb-1">ชื่อเล่น / Display Name</label><input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs outline-none" /></div>
+                  <div><label className="text-[10px] font-bold text-slate-500 block mb-1">คณะ / ชั้นปี</label><input type="text" value={faculty} onChange={(e) => setFaculty(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs outline-none" /></div>
+                  <button onClick={handleSaveProfile} className="w-full bg-[#4338CA] text-white font-bold py-2.5 rounded-xl text-xs">{isSavedProfile ? 'บันทึกสำเร็จแล้ว!' : 'บันทึกการเปลี่ยนแปลง'}</button>
+                </div>
+                <button onClick={handleLogout} className="w-full bg-rose-50 text-rose-600 font-bold py-3 rounded-2xl text-xs border border-rose-100 flex items-center justify-center gap-2"><LogOut className="w-4 h-4" /> ออกจากระบบ (Logout)</button>
+              </div>
+            )}
+
+            {/* FLOATING ACTION BUTTON */}
+            {currentTab === 'home' && (
+              <button onClick={() => { setIsEditingGroup(false); setCurrentTab('create'); }} className="absolute bottom-16 right-4 bg-[#4338CA] text-white shadow-lg rounded-2xl px-4 py-3 text-xs font-semibold flex items-center gap-1.5 z-20">
+                <Plus className="w-4 h-4" /> สร้างห้องติว
+              </button>
+            )}
+
+            {/* BOTTOM NAVIGATION */}
+            <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-6 py-2.5 flex justify-between items-center text-[10px] font-medium z-20 shadow-lg">
+              <button onClick={() => setCurrentTab('home')} className={`flex flex-col items-center gap-0.5 ${currentTab === 'home' ? 'text-[#4338CA] font-bold' : 'text-slate-400'}`}><Compass className="w-4 h-4" /><span>ค้นหาห้อง</span></button>
+              <button onClick={() => setCurrentTab('my_groups')} className={`flex flex-col items-center gap-0.5 ${currentTab === 'my_groups' || currentTab === 'private_chat' ? 'text-[#4338CA] font-bold' : 'text-slate-400'}`}><MessageCircle className="w-4 h-4" /><span>ห้องของฉัน</span></button>
+              <button onClick={() => setCurrentTab('schedule')} className={`flex flex-col items-center gap-0.5 ${currentTab === 'schedule' ? 'text-[#4338CA] font-bold' : 'text-slate-400'}`}><Calendar className="w-4 h-4" /><span>ตารางนัด</span></button>
+              <button onClick={() => { setIsEditingGroup(false); setCurrentTab('create'); }} className={`flex flex-col items-center gap-0.5 ${currentTab === 'create' ? 'text-[#4338CA] font-bold' : 'text-slate-400'}`}><Plus className="w-4 h-4" /><span>สร้างห้อง</span></button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+ 
