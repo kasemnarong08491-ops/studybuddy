@@ -100,6 +100,8 @@ const formatMessageDayLabel = (createdAt) => {
   return date.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 };
 
+const cleanProfileName = (name) => String(name || '').replace(/(?:\s*\(นักศึกษา SPU\))+\s*$/, '').trim();
+
 function drawSparkleStar(ctx, cx, cy, size, color, rotation = 0) {
   ctx.save();
   ctx.translate(cx, cy);
@@ -191,6 +193,8 @@ export default function App() {
   const rainCanvasRef = useRef(null);
   const starfallCanvasRef = useRef(null);
   const mapIframeRef = useRef(null);
+  const mapPageScrollRef = useRef(null);
+  const mapIframeWheelHandlerRef = useRef(null);
 
   // Navigation & Search State
   const [currentTab, setCurrentTab] = useState('home'); 
@@ -238,6 +242,8 @@ export default function App() {
   const [customSubject, setCustomSubject] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ภาษาต่างประเทศ');
   const [locationText, setLocationText] = useState('อาคาร 11 ชั้น 5 (สำนักหอสมุด SPU)');
+  const [customLocation, setCustomLocation] = useState('');
+  const [selectedMapLocation, setSelectedMapLocation] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
   const [groupDate, setGroupDate] = useState('');
   const [groupTime, setGroupTime] = useState('13:00 - 15:00 น.');
@@ -591,6 +597,12 @@ export default function App() {
   }, [currentTab, selectedGroup, roomChatMessages]);
 
   const fetchGroupsFromSupabase = async () => {
+    if (!user?.id) {
+      setStudyGroups([]);
+      setAllPendingRequests([]);
+      setIsGroupsLoading(false);
+      return;
+    }
     try {
       const { data, error } = await supabase.from('study_groups').select('*').order('created_at', { ascending: false });
       if (error) {
@@ -601,29 +613,33 @@ export default function App() {
       if (data) {
         setStudyGroups(data);
 
-        const userId = user?.id || user?.email || currentUser.name;
-        if (userId) {
-          const { data: myMemberships } = await supabase.from('group_members').select('group_id').or(`user_id.eq.${userId},user_name.eq.${currentUser.name}`).eq('status', 'accepted');
+        const userName = currentUser?.name;
+        const userId = user?.id;
+        if (userId && userName) {
+          const { data: myMemberships } = await supabase.from('group_members').select('group_id').or(`user_id.eq.${userId},user_name.eq.${userName}`).eq('status', 'accepted');
           if (myMemberships) {
             const approvedIds = myMemberships.map(m => m.group_id);
             setMyJoinedGroupIds(prev => Array.from(new Set([...prev, ...approvedIds])));
           }
         }
 
-        data.forEach(async (g) => {
-          const { data: lastMsgs } = await supabase.from('group_messages').select('*').eq('group_id', g.id).order('created_at', { ascending: false }).limit(1);
-          if (lastMsgs && lastMsgs[0]) {
-            const cleanText = lastMsgs[0].text?.startsWith('[IMAGE]:') ? '📷 [ส่งรูปภาพ]' : lastMsgs[0].text;
-            setRecentGroupMessages(prev => ({
-              ...prev,
-              [g.id]: {
-                text: `${lastMsgs[0].sender_name}: ${cleanText}`,
-                time: formatTime(lastMsgs[0].created_at),
-                timestamp: new Date(lastMsgs[0].created_at).getTime()
-              }
-            }));
-          }
-        });
+        if (userId) {
+          data.forEach(async (g) => {
+            if (g?.id == null) return;
+            const { data: lastMsgs } = await supabase.from('group_messages').select('*').eq('group_id', g.id).order('created_at', { ascending: false }).limit(1);
+            if (lastMsgs && lastMsgs[0]) {
+              const cleanText = lastMsgs[0].text?.startsWith('[IMAGE]:') ? '📷 [ส่งรูปภาพ]' : lastMsgs[0].text;
+              setRecentGroupMessages(prev => ({
+                ...prev,
+                [g.id]: {
+                  text: `${lastMsgs[0].sender_name}: ${cleanText}`,
+                  time: formatTime(lastMsgs[0].created_at),
+                  timestamp: new Date(lastMsgs[0].created_at).getTime()
+                }
+              }));
+            }
+          });
+        }
       }
     } catch (error) {
       setGroupsLoadError(error?.message || 'เกิดข้อผิดพลาดขณะโหลดกลุ่มติว');
@@ -633,27 +649,68 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!user?.id) return;
     fetchGroupsFromSupabase();
     const groupsChannel = supabase.channel('public-study-groups-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'study_groups' }, fetchGroupsFromSupabase)
       .subscribe();
-    return () => { supabase.removeChannel(groupsChannel); };
-  }, [user, currentUser.name]);
+    return () => supabase.removeChannel(groupsChannel);
+  }, [user?.id, currentUser.name]);
 
   const fetchAllPendingRequestsForHost = async () => {
-    const { data } = await supabase.from('group_members').select('*, study_groups(title)').eq('status', 'pending');
-    if (data && studyGroups.length > 0) {
-      const myHostedGroupIds = studyGroups.filter(g => isHost(g)).map(g => String(g.id));
-      const filtered = data.filter(m => myHostedGroupIds.includes(String(m.group_id)));
-      setAllPendingRequests(filtered);
-    } else {
+    if (!user?.id || !studyGroups.length) {
       setAllPendingRequests([]);
+      return;
     }
+    const { data: pendingMembers, error: membersError } = await supabase
+      .from('group_members')
+      .select('*')
+      .eq('status', 'pending');
+    if (membersError) {
+      console.error('Unable to load pending group requests:', membersError);
+      return;
+    }
+    if (!pendingMembers?.length) {
+      setAllPendingRequests([]);
+      return;
+    }
+
+    const hostedGroupIds = new Set(
+      studyGroups.filter(group => isHost(group)).map(group => String(group.id))
+    );
+    const pendingGroupIds = [...new Set(
+      pendingMembers
+        .map(member => member.group_id)
+        .filter(groupId => groupId != null && hostedGroupIds.has(String(groupId)))
+    )];
+    if (!pendingGroupIds.length) {
+      setAllPendingRequests([]);
+      return;
+    }
+
+    const { data: groups, error: groupsError } = await supabase
+      .from('study_groups')
+      .select('id,title')
+      .in('id', pendingGroupIds);
+    if (groupsError) {
+      console.error('Unable to load groups for pending requests:', groupsError);
+      return;
+    }
+
+    const groupById = new Map((groups || []).map(group => [String(group.id), group]));
+    setAllPendingRequests(
+      pendingMembers
+        .filter(member => hostedGroupIds.has(String(member.group_id)))
+        .map(member => ({
+          ...member,
+          study_groups: groupById.get(String(member.group_id)) || null
+        }))
+    );
   };
 
   useEffect(() => {
     fetchAllPendingRequestsForHost();
-  }, [user, currentUser.name, studyGroups]);
+  }, [user?.id, user?.email, studyGroups]);
 
   const showToast = (senderKey, title, message, notificationMeta = {}) => {
     setToastNotification({ title, message, ...notificationMeta });
@@ -675,7 +732,7 @@ export default function App() {
     if (!userData) return;
     await supabase.from('profiles').upsert({
       id: userData.id, email: userData.email, display_name: profileData.name,
-      gender: profileData.gender, avatar: profileData.avatar, faculty: faculty || 'นักศึกษา SPU', updated_at: new Date().toISOString()
+      gender: profileData.gender, avatar: profileData.avatar, faculty, updated_at: new Date().toISOString()
     });
   };
 
@@ -692,10 +749,11 @@ export default function App() {
   }, []);
 
   const fetchProfileFromSupabase = async (authUser) => {
+    if (!authUser?.id) return;
     const { data } = await supabase.from('profiles').select('*').eq('id', authUser.id).single();
     if (data) {
-      const name = data.display_name || authUser.email.split('@')[0];
-      setDisplayName(name); setSelectedGender(data.gender || 'ชาย'); setFaculty(data.faculty || '');
+      const name = cleanProfileName(data.display_name || authUser.email.split('@')[0]);
+      setDisplayName(name); setSelectedGender(data.gender || 'ชาย'); setFaculty(data.faculty === 'นักศึกษา SPU' ? '' : data.faculty || '');
       const userObj = { name, gender: data.gender || 'ชาย', avatar: data.avatar || cartoonAvatars[0].url };
       setCurrentUser(userObj);
       localStorage.setItem('user_profile_avatar', userObj.avatar);
@@ -709,7 +767,7 @@ export default function App() {
   };
 
   const fetchFriendStatus = async () => {
-    if (!user) return;
+    if (!user?.id) return;
     
     const { data: reqs } = await supabase.from('friend_requests').select('*').eq('receiver_id', user.id).eq('status', 'pending');
     if (reqs) setFriendRequests(reqs);
@@ -735,6 +793,7 @@ export default function App() {
       if (profiles) {
         setAcceptedFriends(profiles);
         profiles.forEach(async (f) => {
+          if (!f?.id) return;
           const { data: msgs } = await supabase.from('direct_messages').select('*')
             .or(`and(sender_id.eq.${user.id},receiver_id.eq.${f.id}),and(sender_id.eq.${f.id},receiver_id.eq.${user.id})`)
             .order('created_at', { ascending: false }).limit(1);
@@ -766,7 +825,7 @@ export default function App() {
 
   // GLOBAL REALTIME HUB
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) return;
     const globalChannel = supabase.channel('global-app-realtime-hub-fixed-v9')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, async (payload) => {
         const newMsg = payload.new;
@@ -776,6 +835,7 @@ export default function App() {
         setAcceptedFriends(prev => {
           const exists = prev.some(f => f.id === targetFriendId);
           if (!exists) {
+            if (!targetFriendId) return prev;
             supabase.from('profiles').select('*').eq('id', targetFriendId).single().then(({ data: newProfile }) => {
               if (newProfile) setAcceptedFriends(current => [...current, newProfile]);
             });
@@ -827,7 +887,7 @@ export default function App() {
             setMyJoinedGroupIds(prev => Array.from(new Set([...prev, m.group_id])));
             
             let approvedGroup = studyGroups.find(g => String(g.id) === String(m.group_id));
-            if (!approvedGroup) {
+            if (!approvedGroup && m.group_id != null) {
               const { data: fetchedG } = await supabase.from('study_groups').select('*').eq('id', m.group_id).single();
               if (fetchedG) approvedGroup = fetchedG;
             }
@@ -838,7 +898,7 @@ export default function App() {
           }
         }
 
-        if (selectedGroup) {
+        if (selectedGroup?.id != null) {
           supabase.from('group_members').select('*').eq('group_id', selectedGroup.id).then(({ data: members }) => {
             if (members) setGroupMembers(members);
           });
@@ -874,9 +934,77 @@ export default function App() {
           const tg = studyGroups.find(g => String(g.id) === String(gMsg.group_id));
           showToast(`group-${gMsg.group_id}`, `📢 ข้อความกลุ่มติวใหม่ (${gMsg.sender_name})`, cleanText, { type: 'group', groupId: gMsg.group_id, groupObj: tg });
         }
+      })
+
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
+        const updatedProfile = payload.new;
+        if (!updatedProfile || !updatedProfile.id) return;
+
+        // 1. If it's my own profile updated from another session/device
+        if (user?.id && updatedProfile.id === user.id) {
+          const freshAvatar = updatedProfile.avatar || cartoonAvatars[0].url;
+          setCurrentUser(prev => ({
+            ...prev,
+            name: cleanProfileName(updatedProfile.display_name || prev.name),
+            gender: updatedProfile.gender || prev.gender,
+            avatar: freshAvatar
+          }));
+          try {
+            localStorage.setItem('user_profile_avatar', freshAvatar);
+            if (updatedProfile.gender) localStorage.setItem('user_profile_gender', updatedProfile.gender);
+          } catch {}
+        }
+
+        // 2. Realtime sync to accepted friends (Chat List & Friends List)
+        setAcceptedFriends(prev => prev.map(f => {
+          if (f.id === updatedProfile.id) {
+            return {
+              ...f,
+              ...updatedProfile,
+              name: cleanProfileName(updatedProfile.display_name || f.name || f.email?.split('@')[0]),
+              avatar: updatedProfile.avatar || f.avatar || cartoonAvatars[0].url
+            };
+          }
+          return f;
+        }));
+
+        // 3. Update active private chat member in realtime if currently open
+        setActivePrivateMember(prev => {
+          if (prev && prev.id === updatedProfile.id) {
+            return {
+              ...prev,
+              avatar: updatedProfile.avatar || prev.avatar,
+              name: cleanProfileName(updatedProfile.display_name || prev.name)
+            };
+          }
+          return prev;
+        });
+
+        // 4. Update searched friends list in realtime
+        setSearchedFriends(prev => prev.map(f => {
+          if (f.id === updatedProfile.id) {
+            return {
+              ...f,
+              avatar: updatedProfile.avatar || f.avatar,
+              name: cleanProfileName(updatedProfile.display_name || f.name)
+            };
+          }
+          return f;
+        }));
+
+        // 5. Update group members list if in room chat
+        setGroupMembers(prev => prev.map(m => {
+          if (m.user_id === updatedProfile.id) {
+            return {
+              ...m,
+              user_avatar: updatedProfile.avatar || m.user_avatar
+            };
+          }
+          return m;
+        }));
       }).subscribe();
 
-    return () => { supabase.removeChannel(globalChannel); };
+    return () => supabase.removeChannel(globalChannel);
   }, [user, currentUser.name, currentTab, activePrivateMember, selectedGroup, studyGroups]);
 
   // Realtime Friends Search
@@ -904,8 +1032,8 @@ export default function App() {
           .filter(p => p.id !== user?.id)
           .map(p => ({
             id: p.id,
-            name: (p.display_name || p.email?.split('@')[0] || 'นักศึกษา').replace(/\s*\(นักศึกษา SPU\)/g, ''),
-            faculty: p.faculty || 'นักศึกษา SPU',
+              name: cleanProfileName(p.display_name || p.email?.split('@')[0] || 'เพื่อน'),
+              faculty: p.faculty || '',
             avatar: p.avatar || cartoonAvatars[0].url,
             email: p.email || ''
           })));
@@ -917,7 +1045,7 @@ export default function App() {
 
   // ROOM CHAT REALTIME LISTENER
   useEffect(() => {
-    if (!selectedGroup?.id || currentTab !== 'room_chat') return;
+    if (!user?.id || !selectedGroup?.id || currentTab !== 'room_chat') return;
     setRecentGroupMessages(prev => ({ ...prev, [selectedGroup.id]: { ...prev[selectedGroup.id], unread: false } }));
     setRoomChatMessages([]);
     setRoomChatLoadError('');
@@ -965,12 +1093,12 @@ export default function App() {
         }
       });
 
-    return () => { supabase.removeChannel(roomChannel); };
-  }, [selectedGroup?.id, currentTab]);
+    return () => supabase.removeChannel(roomChannel);
+  }, [selectedGroup?.id, currentTab, user?.id]);
 
   // PRIVATE CHAT REALTIME LISTENER
   useEffect(() => {
-    if (!activePrivateMember?.id || !user || currentTab !== 'private_chat') return;
+    if (!activePrivateMember?.id || !user?.id || currentTab !== 'private_chat') return;
     
     setRecentDMMessages(prev => ({ ...prev, [activePrivateMember.id]: { ...prev[activePrivateMember.id], unread: false } }));
     
@@ -1003,18 +1131,19 @@ export default function App() {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(dmChannel); };
+    return () => supabase.removeChannel(dmChannel);
   }, [activePrivateMember, user, currentTab]);
 
   // Actions
   const handleSendFriendRequest = async (targetUser) => {
-    if (!user) return;
+    if (!user?.id || !targetUser?.id) return;
     const { error } = await supabase.from('friend_requests').insert([{ sender_id: user.id, sender_name: currentUser.name, receiver_id: targetUser.id, receiver_name: targetUser.name, status: 'pending' }]);
     if (error) notifyUser('ส่งคำขอไม่สำเร็จ: ' + error.message);
     else { notifyUser(`ส่งคำขอเป็นเพื่อนถึง ${targetUser.name} เรียบร้อยแล้ว!`); fetchFriendStatus(); }
   };
 
   const handleAcceptFriendRequest = async (request) => {
+    if (request?.id == null) return;
     const { error } = await supabase.from('friend_requests').update({ status: 'accepted' }).eq('id', request.id);
     if (!error) { notifyUser(`ตอบรับคำขอจาก ${request.sender_name} เรียบร้อยแล้ว!`); fetchFriendStatus(); }
   };
@@ -1140,6 +1269,7 @@ export default function App() {
   };
 
   const handleRequestJoinRoom = async (group) => {
+    if (group?.id == null) return;
     if (!user?.id) {
       notifyUser('กรุณาเข้าสู่ระบบก่อนเข้าร่วมห้องติว');
       return;
@@ -1191,7 +1321,7 @@ export default function App() {
   };
 
   const handleLeaveGroup = async (group = selectedGroup) => {
-    if (!group) return;
+    if (group?.id == null) return;
     if (!user?.id) {
       notifyUser('กรุณาเข้าสู่ระบบก่อนออกจากกลุ่มติว');
       return;
@@ -1217,6 +1347,7 @@ export default function App() {
   };
 
   const handleApproveMember = async (memberId, status, notifId = null) => {
+    if (memberId == null || !['accepted', 'rejected'].includes(status)) return;
     const { error } = await supabase.from('group_members').update({ status }).eq('id', memberId);
     if (!error) {
       notifyUser(status === 'accepted' ? 'อนุมัติสมาชิกเรียบร้อยแล้ว!' : 'ปฏิเสธคำขอเรียบร้อยแล้ว');
@@ -1234,7 +1365,7 @@ export default function App() {
         setToastNotification(null);
       }
       
-      if (status === 'accepted' && selectedGroup) {
+      if (status === 'accepted' && selectedGroup?.id != null) {
         const { data: acceptedList } = await supabase.from('group_members').select('*').eq('group_id', selectedGroup.id).eq('status', 'accepted');
         const newCount = (acceptedList ? acceptedList.length : 0) + 1;
         await supabase.from('study_groups').update({ current_members: newCount }).eq('id', selectedGroup.id);
@@ -1246,7 +1377,7 @@ export default function App() {
   };
 
   const handleDeleteGroup = async () => {
-    if (!selectedGroup) return;
+    if (selectedGroup?.id == null) return;
     if (!isHost(selectedGroup)) { notifyUser('เฉพาะหัวหน้าห้องเท่านั้นที่มีสิทธิ์ยุบและลบกลุ่มนี้!'); return; }
     if (confirm(`⚠️ ยืนยันยุบห้องติว "${selectedGroup.title}" หรือไม่? \nข้อความและสมาชิกทั้งหมดในห้องนี้จะถูกลบทันที`)) {
       await supabase.from('group_members').delete().eq('group_id', selectedGroup.id);
@@ -1281,7 +1412,7 @@ export default function App() {
           notifyUser('สมัครสมาชิกสำเร็จแล้ว!');
           if (data?.user) {
             const userObj = { name: displayName || email.split('@')[0], gender: selectedGender, avatar: cartoonAvatars[0].url };
-            const { error: profileError } = await supabase.from('profiles').upsert({ id: data.user.id, email: data.user.email, display_name: userObj.name, gender: userObj.gender, avatar: userObj.avatar, faculty: faculty || 'นักศึกษา SPU', updated_at: new Date().toISOString() });
+            const { error: profileError } = await supabase.from('profiles').upsert({ id: data.user.id, email: data.user.email, display_name: userObj.name, gender: userObj.gender, avatar: userObj.avatar, faculty, updated_at: new Date().toISOString() });
             if (profileError) console.error('Unable to save the new user profile:', profileError);
             setCurrentUser(userObj);
           }
@@ -1343,7 +1474,8 @@ export default function App() {
 
   const handleSaveProfile = () => {
     if (!displayName.trim()) return;
-    const finalName = faculty ? `${displayName} (${faculty})` : displayName;
+    const finalName = cleanProfileName(displayName);
+    setDisplayName(finalName);
     const updatedUser = { ...currentUser, name: finalName, gender: selectedGender };
     setCurrentUser(updatedUser); localStorage.setItem('user_profile_gender', selectedGender); setIsSavedProfile(true);
     if (user) syncProfileToSupabase(user, updatedUser);
@@ -1366,13 +1498,32 @@ export default function App() {
       localSaveFailed = true;
     }
 
-    if (user) {
-      const { error } = await supabase.from('profiles')
-        .update({ avatar, updated_at: new Date().toISOString() })
-        .eq('id', user.id);
-      if (error) {
-        notifyUser(`เปลี่ยนรูปในหน้านี้แล้ว แต่บันทึกลงบัญชีไม่สำเร็จ: ${error.message}`, 'error');
+    if (user?.id) {
+      // 1. บันทึกลง Database จริง (Supabase profiles table) แบบ upsert ทันที
+      const { error: profileError } = await supabase.from('profiles')
+        .upsert({
+          id: user.id,
+          avatar,
+          email: user.email,
+          display_name: cleanProfileName(displayName || currentUser.name),
+          gender: selectedGender || currentUser.gender,
+          faculty,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+
+      if (profileError) {
+        console.error('Save avatar profile error:', profileError);
+        notifyUser(`เปลี่ยนรูปในหน้านี้แล้ว แต่บันทึกลงบัญชีไม่สำเร็จ: ${profileError.message}`, 'error');
         return;
+      }
+
+      // 2. อัปเดตตาราง group_members ให้รูปสมาชิกในห้องติวเป็นรูปปัจจุบัน
+      try {
+        await supabase.from('group_members')
+          .update({ user_avatar: avatar })
+          .eq('user_id', user.id);
+      } catch (memberErr) {
+        console.log('Update group_members avatar non-fatal:', memberErr);
       }
     }
 
@@ -1433,7 +1584,45 @@ export default function App() {
           const context = canvas.getContext('2d');
           if (!context) throw new Error('ไม่สามารถประมวลผลรูปภาพได้');
           context.drawImage(img, 0, 0, canvas.width, canvas.height);
-          await saveAvatar(canvas.toDataURL('image/jpeg', 0.75));
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+
+          // อัปโหลดขึ้น Supabase Storage (หากล็อกอินอยู่) พร้อมต่อท้าย ?t=${Date.now()} ป้องกัน Browser Cache
+          if (user?.id) {
+            try {
+              const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+              if (blob) {
+                const ext = file.name?.split('.').pop() || 'jpg';
+                const fileName = `avatar_${user.id}_${Date.now()}.${ext}`;
+                let bucketName = 'avatars';
+                let uploadResult = await supabase.storage.from(bucketName).upload(fileName, blob, {
+                  contentType: 'image/jpeg',
+                  upsert: true
+                });
+
+                if (uploadResult.error) {
+                  bucketName = 'chat-images';
+                  uploadResult = await supabase.storage.from(bucketName).upload(fileName, blob, {
+                    contentType: 'image/jpeg',
+                    upsert: true
+                  });
+                }
+
+                if (!uploadResult.error && uploadResult.data) {
+                  const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(fileName);
+                  if (urlData?.publicUrl) {
+                    const avatarUrlWithTimestamp = `${urlData.publicUrl}?t=${Date.now()}`;
+                    await saveAvatar(avatarUrlWithTimestamp);
+                    return;
+                  }
+                }
+              }
+            } catch (storageErr) {
+              console.log('Supabase storage avatar upload fallback to canvas Base64:', storageErr);
+            }
+          }
+
+          // Fallback บันทึกแบบ Base64 ลง profiles table
+          await saveAvatar(compressedBase64);
         } catch (error) {
           notifyUser(`เปลี่ยนรูปไม่สำเร็จ: ${error.message}`, 'error');
         }
@@ -1444,6 +1633,7 @@ export default function App() {
   };
 
   const handleCancelSchedule = async (group) => {
+    if (group?.id == null) return;
     if (!isHost(group)) {
       notifyUser('เฉพาะหัวหน้าห้องเท่านั้นที่ยกเลิกนัดนี้ได้');
       return;
@@ -1471,8 +1661,39 @@ export default function App() {
 
   const handleOpenEditGroupModal = () => {
     setCustomSubject(selectedGroup.subject); setGroupTitle(selectedGroup.title);
-    setSelectedCategory(selectedGroup.category); setLocationText(selectedGroup.location);
+    setSelectedCategory(selectedGroup.category);
+    const standardLocations = [
+      'อาคาร 11 ชั้น 5 (สำนักหอสมุด SPU)',
+      'อาคาร 5 ชั้น 8 (คณะ IT SPU)',
+      'อาคาร 9',
+      'Google Meet (ออนไลน์)'
+    ];
+    if (standardLocations.includes(selectedGroup.location)) {
+      setLocationText(selectedGroup.location);
+      setCustomLocation('');
+    } else {
+      setLocationText('other');
+      setCustomLocation(selectedGroup.location || '');
+    }
     setGroupDescription(selectedGroup.description); setIsEditingGroup(true); setCurrentTab('create');
+  };
+
+  const handleViewLocationOnMap = (loc) => {
+    if (!loc) return;
+    setSelectedMapLocation(loc);
+    setCurrentTab('map_page');
+    setTimeout(() => {
+      try {
+        const iframe = mapIframeRef.current;
+        if (iframe?.contentWindow?.navigateToLocation) {
+          iframe.contentWindow.navigateToLocation(loc);
+        } else if (iframe?.contentWindow) {
+          iframe.contentWindow.postMessage({ type: 'NAVIGATE_LOCATION', location: loc }, '*');
+        }
+      } catch (e) {
+        console.log('Map navigation handled:', e);
+      }
+    }, 600);
   };
 
   const handleSaveGroup = async () => {
@@ -1481,19 +1702,34 @@ export default function App() {
       return; 
     }
 
+    // จัดการสถานที่นัดพบ กรณีเลือก "อื่นๆ" (other)
+    let finalLocation = locationText;
+    if (locationText === 'other') {
+      const trimmedCustom = customLocation.trim();
+      if (!trimmedCustom) {
+        notifyUser('กรุณาระบุสถานที่นัดพบในช่อง "อื่นๆ" ให้ชัดเจนก่อนบันทึกครับ');
+        return;
+      }
+      finalLocation = trimmedCustom;
+    }
+
     const formattedDateTime = groupDate 
       ? `${groupDate} | ${groupTime}` 
       : `เสาร์นี้ | ${groupTime}`;
 
-    const computedFormat = locationText.includes('Google Meet') ? 'online' : 'onsite';
+    const computedFormat = finalLocation.includes('Google Meet') || finalLocation.toLowerCase().includes('discord') || finalLocation.includes('ออนไลน์') ? 'online' : 'onsite';
 
     if (isEditingGroup) {
+      if (selectedGroup?.id == null) {
+        notifyUser('ไม่พบกลุ่มติวที่ต้องการแก้ไข');
+        return;
+      }
       const updatedGroup = { 
         title: groupTitle.trim(), 
         subject: customSubject.trim(), 
         category: selectedCategory, 
         format: computedFormat,
-        location: locationText, 
+        location: finalLocation, 
         description: groupDescription,
         date_time: formattedDateTime
       };
@@ -1501,6 +1737,8 @@ export default function App() {
       if (!error) {
         setSelectedGroup(prev => ({ ...prev, ...updatedGroup })); 
         setIsEditingGroup(false);
+        setLocationText('อาคาร 11 ชั้น 5 (สำนักหอสมุด SPU)');
+        setCustomLocation('');
         notifyUser('แก้ไขข้อมูลห้องติวสำเร็จ!'); 
         await fetchGroupsFromSupabase(); 
         setCurrentTab('room_chat');
@@ -1513,7 +1751,7 @@ export default function App() {
         subject: customSubject.trim(), 
         category: selectedCategory, 
         format: computedFormat,
-        location: locationText, 
+        location: finalLocation, 
         description: groupDescription || 'ชวนเพื่อนมาช่วยกันอ่านและแลกเปลี่ยนความรู้ฟรี!',
         date_time: formattedDateTime, 
         max_members: Number(maxMembersInput) || 5, 
@@ -1527,6 +1765,8 @@ export default function App() {
       if (!error && data?.[0]) {
         setMyJoinedGroupIds(prev => Array.from(new Set([...prev, data[0].id]))); 
         setSelectedGroup(data[0]);
+        setLocationText('อาคาร 11 ชั้น 5 (สำนักหอสมุด SPU)');
+        setCustomLocation('');
         await fetchGroupsFromSupabase(); 
         notifyUser('🎉 สร้างห้องติวใหม่สำเร็จเรียบร้อยแล้ว!'); 
         setCurrentTab('home');
@@ -1538,6 +1778,8 @@ export default function App() {
     setGroupTitle(''); 
     setCustomSubject(''); 
     setGroupDescription('');
+    setLocationText('อาคาร 11 ชั้น 5 (สำนักหอสมุด SPU)');
+    setCustomLocation('');
   };
 
   const handleOpenPrivateChat = (targetUser) => {
@@ -1615,10 +1857,17 @@ export default function App() {
     : bitMood;
 
   return (
-    <div className="bg-slate-950 min-h-[100dvh] w-full sm:px-4 sm:py-4 flex justify-center items-center font-sans">
+    <div className="bg-slate-950 min-h-[100dvh] w-full overflow-x-hidden overflow-y-auto overscroll-contain sm:px-4 sm:py-0 flex justify-center items-center font-sans">
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .studybuddy-app-frame { width: 100%; max-width: 480px; min-height: 0; height: 100dvh; flex: none; }
+        @media (min-width: 640px) {
+          .studybuddy-app-frame {
+            width: min(480px, calc(100vw - 2rem));
+            height: min(900px, 100dvh);
+          }
+        }
         .bit-mascot__float { transform-box: fill-box; transform-origin: center; animation: bit-float 2.8s ease-in-out infinite; }
         .bit-mascot__shadow { transform-box: fill-box; transform-origin: center; animation: bit-shadow 2.8s ease-in-out infinite; }
         .bit-mascot__wave-arm { transform-box: view-box; transform-origin: 88px 72px; animation: bit-wave 1.45s ease-in-out infinite; }
@@ -1652,7 +1901,7 @@ export default function App() {
       `}</style>
 
       {/* Frame มือถือ พร้อมระบบเปิดไฟปิดไฟ */}
-      <div className={`w-full max-w-[480px] h-[100dvh] sm:h-[min(900px,calc(100dvh-2rem))] bg-[#F8FAFC] rounded-none sm:rounded-[40px] shadow-2xl border-0 sm:border-[6px] border-slate-800 overflow-hidden flex flex-col relative transition-all duration-300 ${
+      <div className={`studybuddy-app-frame max-w-4xl bg-[#F8FAFC] rounded-none sm:rounded-[40px] shadow-2xl border-0 sm:border-[6px] border-slate-800 overflow-hidden flex flex-col relative transition-all duration-300 ${
         !user && isSparking ? 'ring-4 ring-amber-400 scale-[0.998]' : ''
       }`}>
 
@@ -1716,7 +1965,7 @@ export default function App() {
               {actionToast.type === 'success' ? <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> :
                actionToast.type === 'error' ? <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" /> :
                <Bell className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />}
-              <p className="max-h-20 flex-1 overflow-y-auto text-xs leading-relaxed">{actionToast.message}</p>
+              <p className="max-h-20 flex-1 overflow-y-auto overscroll-contain text-xs leading-relaxed">{actionToast.message}</p>
               <button onClick={dismissActionToast} aria-label="ปิดข้อความแจ้งเตือน" className="-mr-1 -mt-1 rounded-lg p-1 text-slate-500 hover:bg-black/5">
                 <X className="h-4 w-4" />
               </button>
@@ -1751,7 +2000,7 @@ export default function App() {
                 <div className="flex items-center gap-1.5"><Bell className="w-4 h-4 text-indigo-600" /><h3 className="font-bold text-xs text-slate-900">การแจ้งเตือนล่าสุด ({notifications.length}/6)</h3></div>
                 <button onClick={() => setShowNotificationModal(false)} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
               </div>
-              <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar text-xs">
+              <div className="flex-1 overflow-y-auto overscroll-contain space-y-2 no-scrollbar text-xs">
                 {notifications.length === 0 ? <p className="text-center text-slate-400 text-[10px] py-4">ไม่มีการแจ้งเตือนใหม่</p> :
                   notifications.map((n) => (
                     <div key={n.id} className={`border p-3 rounded-2xl space-y-1.5 ${n.isHandled || n.read ? 'bg-slate-50 border-slate-100 opacity-70' : 'bg-indigo-50/40 border-indigo-200'}`}>
@@ -1789,7 +2038,7 @@ export default function App() {
                 <div className="flex items-center gap-1.5"><Users className="w-4 h-4 text-indigo-600" /><h3 className="font-bold text-xs text-slate-900">สมาชิกในห้องติว ({groupMembers.filter(m => m.status === 'accepted').length + 1}/{selectedGroup.max_members || 5})</h3></div>
                 <button onClick={() => setShowMemberListModal(false)} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
               </div>
-              <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar text-xs">
+              <div className="flex-1 overflow-y-auto overscroll-contain space-y-2 no-scrollbar text-xs">
                 <div className="bg-indigo-50/80 p-2.5 rounded-2xl border border-indigo-100 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center text-xs">👑</div>
@@ -1851,7 +2100,7 @@ export default function App() {
                 <Search className="w-4 h-4 text-slate-400" />
                 <input type="text" value={friendSearchTerm} onChange={(e) => setFriendSearchTerm(e.target.value)} placeholder="พิมพ์ชื่อเพื่อน หรืออีเมล SPU..." className="w-full text-xs outline-none bg-transparent" autoFocus />
               </div>
-              <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar text-xs">
+              <div className="flex-1 overflow-y-auto overscroll-contain space-y-2 no-scrollbar text-xs">
                 {friendSearchTerm.trim() !== '' ? (
                   searchedFriends.map((u) => {
                     const isAccepted = acceptedFriends.some(f => f.id === u.id);
@@ -1886,7 +2135,7 @@ export default function App() {
               mouseTrackingRef.current.active = false;
               if (customCursorRef.current) customCursorRef.current.style.opacity = '0';
             }}
-            className={`flex-1 flex flex-col overflow-y-auto no-scrollbar relative transition-colors duration-500 cursor-none ${
+            className={`flex-1 min-h-0 flex flex-col overflow-y-auto overscroll-contain no-scrollbar relative transition-colors duration-500 cursor-none ${
               isLightsOff 
                 ? `bg-gradient-to-b ${currentThemeObj.bg}`
                 : 'bg-[#F8FAFC]'
@@ -1918,7 +2167,7 @@ export default function App() {
               />
             </div>
 
-            <div className={`pt-9 pb-8 px-6 text-white text-center relative overflow-hidden rounded-b-[36px] shadow-lg shrink-0 transition-all duration-500 z-10 ${
+            <div className={`pt-10 pb-8 px-6 text-white text-center relative overflow-hidden rounded-b-[36px] shadow-lg shrink-0 transition-all duration-500 z-10 ${
               isLightsOff 
                 ? 'bg-slate-900/40 backdrop-blur-md border-b border-white/10' 
                 : 'bg-gradient-to-br from-indigo-700 via-indigo-600 to-slate-900'
@@ -1942,29 +2191,29 @@ export default function App() {
                   <BookOpen className="w-7 h-7 text-white" />
                 </div>
                 <div className="flex items-center gap-1.5 justify-center mb-1">
-                  <h1 className="text-2xl font-black tracking-tight text-white">StudyBuddy</h1>
-                  <Sparkles className="w-4 h-4 text-amber-300 animate-spin" />
+                  <h1 className="text-3xl md:text-4xl font-black tracking-tight text-white">StudyBuddy</h1>
+                  <Sparkles className="w-5 h-5 text-amber-300 animate-spin" />
                 </div>
-                <p className="text-[11px] text-indigo-100/90 font-medium max-w-[240px]">
+                <p className="text-sm text-indigo-100/90 font-medium max-w-sm">
                   ศูนย์รวมกลุ่มติวหนังสือ & หาเพื่อนเรียน SPU
                 </p>
 
-                <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 border border-white/20 backdrop-blur-md">
-                  <GraduationCap className="w-3.5 h-3.5 text-amber-300" />
-                  <span className="text-[10px] font-semibold text-white">Sripatum University</span>
+                <div className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/15 border border-white/20 backdrop-blur-md">
+                  <GraduationCap className="w-4 h-4 text-amber-300" />
+                  <span className="text-xs font-semibold text-white">Sripatum University</span>
                 </div>
               </div>
             </div>
 
-            <div className="flex-1 px-6 pt-6 pb-8 flex flex-col justify-between z-10 relative">
-              <div>
-                <div className={`p-1 rounded-2xl flex gap-1 mb-5 transition-all ${
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pt-6 pb-32 flex flex-col z-10 relative">
+              <div className="mx-auto my-auto w-full max-w-md">
+                <div className={`p-1 rounded-2xl flex gap-1 mb-4 transition-all ${
                   isLightsOff ? 'bg-slate-800/80 border border-slate-700 backdrop-blur-md' : 'bg-slate-200/80'
                 }`}>
                   <button
                     type="button"
                     onClick={() => setAuthMode('login')}
-                    className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
+                    className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${
                       authMode === 'login'
                         ? isLightsOff 
                           ? `${currentThemeObj.primaryBtn} text-white shadow-lg` 
@@ -1977,7 +2226,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setAuthMode('register')}
-                    className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
+                    className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${
                       authMode === 'register'
                         ? isLightsOff 
                           ? `${currentThemeObj.primaryBtn} text-white shadow-lg` 
@@ -1992,7 +2241,7 @@ export default function App() {
                 <form onSubmit={handleEmailAuth} className="space-y-3.5">
                   {authMode === 'register' && (
                     <div>
-                      <label className={`text-[10px] font-bold block mb-1 ${isLightsOff ? 'text-slate-300' : 'text-slate-600'}`}>
+                      <label className={`text-xs font-bold block mb-1.5 ${isLightsOff ? 'text-slate-300' : 'text-slate-600'}`}>
                         ชื่อแสดงผล / Display Name
                       </label>
                       <div className={`flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all ${
@@ -2006,14 +2255,14 @@ export default function App() {
                           value={displayName}
                           onChange={(e) => setDisplayName(e.target.value)}
                           placeholder="เช่น ชื่อเล่นที่ใช้แสดง"
-                          className="w-full text-xs outline-none bg-transparent cursor-none"
+                          className="w-full text-sm outline-none bg-transparent cursor-none"
                         />
                       </div>
                     </div>
                   )}
 
                   <div>
-                    <label className={`text-[10px] font-bold block mb-1 ${isLightsOff ? 'text-slate-300' : 'text-slate-600'}`}>
+                    <label className={`text-xs font-bold block mb-1.5 ${isLightsOff ? 'text-slate-300' : 'text-slate-600'}`}>
                       อีเมล / Email
                     </label>
                     <div className={`flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all ${
@@ -2028,14 +2277,14 @@ export default function App() {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="กรอกอีเมลของคุณ"
-                        className="w-full text-xs outline-none bg-transparent cursor-none"
+                        className="w-full text-sm outline-none bg-transparent cursor-none"
                         required
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className={`text-[10px] font-bold block mb-1 ${isLightsOff ? 'text-slate-300' : 'text-slate-600'}`}>
+                    <label className={`text-xs font-bold block mb-1.5 ${isLightsOff ? 'text-slate-300' : 'text-slate-600'}`}>
                       รหัสผ่าน / Password
                     </label>
                     <div className={`flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all ${
@@ -2050,7 +2299,7 @@ export default function App() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="w-full text-xs outline-none bg-transparent cursor-none"
+                        className="w-full text-sm outline-none bg-transparent cursor-none"
                         required
                       />
                     </div>
@@ -2059,7 +2308,7 @@ export default function App() {
                   <button
                     type="submit"
                     disabled={authLoading}
-                    className={`w-full text-white font-bold py-3 rounded-2xl text-xs shadow-md transition-all flex items-center justify-center gap-1.5 mt-3 disabled:opacity-70 cursor-none ${
+                    className={`w-full text-white font-bold py-3.5 rounded-2xl text-sm shadow-md transition-all flex items-center justify-center gap-1.5 mt-4 disabled:opacity-70 cursor-none ${
                       isLightsOff 
                         ? currentThemeObj.primaryBtn 
                         : 'bg-[#4338CA] hover:bg-indigo-700 shadow-indigo-600/20'
@@ -2083,7 +2332,7 @@ export default function App() {
 
                 <div className="flex items-center gap-3 my-4" aria-hidden="true">
                   <div className={`h-px flex-1 ${isLightsOff ? 'bg-slate-700' : 'bg-slate-200'}`} />
-                  <span className={`text-[10px] font-semibold ${isLightsOff ? 'text-slate-400' : 'text-slate-500'}`}>
+                  <span className={`text-xs font-semibold ${isLightsOff ? 'text-slate-400' : 'text-slate-500'}`}>
                     หรือ {authMode === 'login' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก'}ด้วย
                   </span>
                   <div className={`h-px flex-1 ${isLightsOff ? 'bg-slate-700' : 'bg-slate-200'}`} />
@@ -2094,13 +2343,13 @@ export default function App() {
                   onClick={handleGoogleAuth}
                   disabled={authLoading}
                   aria-label={authMode === 'login' ? 'เข้าสู่ระบบด้วย Google' : 'สมัครสมาชิกด้วย Google'}
-                  className={`w-full flex items-center justify-center gap-2.5 rounded-2xl border py-3 text-xs font-bold transition-colors disabled:opacity-60 cursor-none ${
+                  className={`w-full flex items-center justify-center gap-2.5 rounded-2xl border py-3.5 text-sm font-bold transition-colors disabled:opacity-60 cursor-none ${
                     isLightsOff
                       ? 'border-slate-700 bg-slate-900/70 text-white hover:bg-slate-800'
                       : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                   }`}
                 >
-                  <svg aria-hidden="true" viewBox="0 0 48 48" className="h-4 w-4">
+                  <svg aria-hidden="true" viewBox="0 0 48 48" className="h-5 w-5">
                     <path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.8 6.1-15Z" />
                     <path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9l-6.6-5.1c-1.8 1.2-4.1 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.3A20 20 0 0 0 24 44Z" />
                     <path fill="#FBBC05" d="M12.6 27.6a12 12 0 0 1 0-7.2v-5.3H5.8a20 20 0 0 0 0 17.8l6.8-5.3Z" />
@@ -2110,8 +2359,8 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="text-center pt-4">
-                <p className={`text-xs ${isLightsOff ? 'text-slate-400' : 'text-slate-500'}`}>
+              <div className="mx-auto mb-auto w-full max-w-md text-center pt-4">
+                <p className={`text-sm ${isLightsOff ? 'text-slate-400' : 'text-slate-500'}`}>
                   {authMode === 'login' ? (
                     <>
                       ยังไม่มีบัญชีใช่ไหม?{' '}
@@ -2167,7 +2416,7 @@ export default function App() {
 
             {/* PAGE 1: HOME */}
             {currentTab === 'home' && (
-              <div className="flex-1 overflow-y-auto px-4 pt-3 pb-24 space-y-3.5 no-scrollbar relative">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 pt-3 pb-32 space-y-3.5 no-scrollbar relative">
                 <div>
                   <h1 className="text-xl font-bold text-slate-900">สวัสดี, {currentUser.name} 👋</h1>
                   <p className="text-xs text-slate-500">หาเพื่อนติววิชาอะไร วันนี้?</p>
@@ -2250,7 +2499,7 @@ export default function App() {
                             {nextUpcomingSchedule.date.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })}
                             {nextUpcomingSchedule.group.date_time?.includes('|') ? ` · ${nextUpcomingSchedule.group.date_time.split('|')[1].trim()}` : ''}
                           </p>
-                          <p className="mt-1 flex items-center gap-1 truncate text-[10px] text-slate-500"><MapPin className="h-3 w-3 shrink-0 text-orange-500" />{nextUpcomingSchedule.group.location}</p>
+                          <button type="button" onClick={() => handleViewLocationOnMap(nextUpcomingSchedule.group.location)} className="mt-1 flex items-center gap-1 truncate text-[10px] text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer text-left"><MapPin className="h-3 w-3 shrink-0 text-orange-500" /><span>{nextUpcomingSchedule.group.location}</span></button>
                         </>
                       ) : (
                         <p className="mt-2 text-[11px] font-semibold text-slate-600">ยังไม่มีนัดที่กำลังจะถึง</p>
@@ -2322,7 +2571,7 @@ export default function App() {
                       <div><h3 className="font-bold text-slate-900 text-xs">{group.title}</h3><p className="text-[10px] text-slate-500 mt-0.5">{group.description}</p></div>
                       <div className="text-[10px] text-slate-600 space-y-1">
                         <div className="flex items-center gap-1.5"><Calendar className="w-3 h-3 text-indigo-500" /><span>{group.date_time}</span></div>
-                        <div className="flex items-center gap-1.5"><MapPin className="w-3 h-3 text-orange-500" /><span>{group.location}</span></div>
+                        <div onClick={(e) => { e.stopPropagation(); handleViewLocationOnMap(group.location); }} className="flex items-center gap-1.5 cursor-pointer hover:text-indigo-600 transition-colors" title="ดูพิกัดบนแผนที่ 3D"><MapPin className="w-3 h-3 text-orange-500 shrink-0" /><span>{group.location}</span></div>
                       </div>
                       <div className="pt-2 flex items-center justify-between border-t border-slate-100">
                         <span className="text-[10px] text-slate-400">สร้างโดย: <b>{group.host_name}</b></span>
@@ -2336,7 +2585,7 @@ export default function App() {
 
             {/* PAGE 2: REALTIME ROOM CHAT */}
             {currentTab === 'room_chat' && selectedGroup && (
-              <div className="flex-1 flex flex-col bg-[#F8FAFC] relative overflow-hidden pb-[60px]">
+              <div className="flex-1 min-h-0 flex flex-col bg-[#F8FAFC] relative overflow-hidden overscroll-contain pb-[60px]">
                 <div className="bg-white px-4 pt-5 pb-3 border-b border-slate-200 shrink-0 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -2386,7 +2635,7 @@ export default function App() {
                     <div className="text-slate-600 leading-snug space-y-1"><p>{selectedGroup.description}</p><p className="text-[9px] text-slate-400 font-semibold">👑 หัวหน้าห้อง: <b className="text-slate-700">{selectedGroup.host_name}</b></p></div>
                     <div className="flex items-center justify-between text-slate-500 pt-1 border-t border-indigo-100/40">
                       <div className="flex items-center gap-1"><Calendar className="w-3 h-3 text-indigo-600" /><span>{selectedGroup.date_time}</span></div>
-                      <div className="flex items-center gap-1"><MapPin className="w-3 h-3 text-orange-500" /><span>{selectedGroup.location}</span></div>
+                      <button type="button" onClick={() => handleViewLocationOnMap(selectedGroup.location)} className="flex items-center gap-1 hover:text-indigo-600 transition-colors cursor-pointer text-left" title="ดูพิกัดบนแผนที่ 3D"><MapPin className="w-3 h-3 text-orange-500 shrink-0" /><span>{selectedGroup.location}</span></button>
                     </div>
                   </div>
                 </div>
@@ -2395,7 +2644,7 @@ export default function App() {
                   ref={roomChatContainerRef}
                   onScroll={handleRoomChatScroll}
                   style={{ backgroundImage: 'radial-gradient(ellipse at 14% 12%, rgba(199,210,254,.42), transparent 38%), radial-gradient(ellipse at 88% 82%, rgba(167,243,208,.3), transparent 34%), linear-gradient(145deg, #fbfcff 0%, #f4f6ff 52%, #f8fafc 100%)' }}
-                  className="relative flex-1 overflow-y-auto p-4 space-y-3 text-xs no-scrollbar"
+                  className="relative flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3 text-xs no-scrollbar"
                 >
                   {newRoomMessagesCount > 0 && (
                     <div className="sticky top-1 z-20 -mb-8 flex justify-center">
@@ -2517,7 +2766,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div ref={privateChatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3 text-xs no-scrollbar">
+                <div ref={privateChatContainerRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3 text-xs no-scrollbar">
                   {privateMessages.map((pm, index) => {
                     const isMe = pm.sender_id === user?.id;
                     const isImage = pm.text?.startsWith('[IMAGE]:');
@@ -2551,7 +2800,7 @@ export default function App() {
 
             {/* PAGE 3: CHATS LIST HUB */}
             {currentTab === 'my_groups' && (
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar pb-24 pt-2">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 no-scrollbar pb-32 pt-2">
                 <div className="flex items-center justify-between gap-2">
                   <div><h2 className="text-xl font-bold text-slate-900 pt-1">รายการแชตทั้งหมด 📚💬</h2><p className="text-xs text-slate-500">รวมทั้งห้องติวและแชตส่วนตัวกับเพื่อน</p></div>
                   <StudyBuddyBit className="h-14 w-12 shrink-0" />
@@ -2653,7 +2902,7 @@ export default function App() {
 
             {/* PAGE 5: SCHEDULE */}
             {currentTab === 'schedule' && (
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar pb-24">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 no-scrollbar pb-32">
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-lg font-bold text-slate-900 pt-1">ตารางนัดติวของฉัน 📅</h2>
                   <StudyBuddyBit className="h-14 w-12 shrink-0" />
@@ -2685,7 +2934,7 @@ export default function App() {
                       <h3 className="font-bold text-slate-900 text-xs">{group.title}</h3>
                       <div className="bg-slate-50 p-2.5 rounded-2xl space-y-1 text-[10px] text-slate-600">
                         <div className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-indigo-600" /><span className="font-semibold text-slate-800">{group.date_time}</span></div>
-                        <div className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-orange-500" /><span>{group.location}</span></div>
+                        <div onClick={() => handleViewLocationOnMap(group.location)} className="flex items-center gap-1.5 cursor-pointer hover:text-indigo-600 transition-colors" title="ดูพิกัดบนแผนที่ 3D"><MapPin className="w-3.5 h-3.5 text-orange-500 shrink-0" /><span>{group.location}</span></div>
                       </div>
                       <div className="pt-1 flex justify-between items-center border-t border-slate-100">
                         {isHost(group) ? (
@@ -2703,7 +2952,7 @@ export default function App() {
 
             {/* PAGE 6: CREATE/EDIT GROUP */}
             {currentTab === 'create' && (
-              <div className="flex-1 overflow-y-auto p-5 pb-24 space-y-4 no-scrollbar">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-5 pb-32 space-y-4 no-scrollbar">
                 <div>
                   <span className="bg-indigo-50 text-[#4338CA] text-[10px] px-2.5 py-1 rounded-full font-bold">🌍 ติวได้ทุกวิชา/ทุกภาษา</span>
                   <h2 className="text-xl font-bold text-slate-900 mt-1">{isEditingGroup ? 'แก้ไขข้อมูลห้องติว ✏️' : 'สร้างห้องติวใหม่ 📚'}</h2>
@@ -2739,12 +2988,33 @@ export default function App() {
                   <div><label className="text-xs font-bold text-slate-700">รายละเอียดเพิ่มเติม</label><textarea value={groupDescription} onChange={(e) => setGroupDescription(e.target.value)} placeholder="รายละเอียดเพิ่มเติม..." className="w-full bg-[#FFFFFF] border border-slate-200 rounded-2xl p-3 text-xs mt-1 outline-none h-20" /></div>
                   <div>
                     <label className="text-xs font-bold text-slate-700">พิกัดจุดนัดพบ (SPU Hub)</label>
-                    <select value={locationText} onChange={(e) => setLocationText(e.target.value)} className="w-full bg-white border border-slate-200 rounded-2xl p-3 text-xs mt-1 outline-none">
+                    <select
+                      value={locationText}
+                      onChange={(e) => setLocationText(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-2xl p-3 text-xs mt-1 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all"
+                    >
                       <option value="อาคาร 11 ชั้น 5 (สำนักหอสมุด SPU)">อาคาร 11 ชั้น 5 (สำนักหอสมุด SPU)</option>
                       <option value="อาคาร 5 ชั้น 8 (คณะ IT SPU)">อาคาร 5 ชั้น 8 (คณะ IT SPU)</option>
-                      <option value="ศูนย์อาหาร 2 (อาคาร 10 ชั้น 1)">ศูนย์อาหาร 2 (อาคาร 10 ชั้น 1)</option>
+                      <option value="อาคาร 9">อาคาร 9</option>
                       <option value="Google Meet (ออนไลน์)">Google Meet (ออนไลน์)</option>
+                      <option value="other">อื่นๆ (ระบุสถานที่เอง)</option>
                     </select>
+
+                    {locationText === 'other' && (
+                      <div className="mt-2.5 space-y-1">
+                        <label className="text-[11px] font-semibold text-indigo-700 block">
+                          📍 ระบุสถานที่นัดพบเอง <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={customLocation}
+                          onChange={(e) => setCustomLocation(e.target.value)}
+                          placeholder="ระบุสถานที่นัดพบ เช่น ร้านกาแฟหน้ามอ, ตึก 1 ชั้น 2, Discord..."
+                          className="w-full bg-white border border-indigo-200 rounded-2xl p-3 text-xs outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all shadow-xs"
+                        />
+                      </div>
+                    )}
                   </div>
                   <button onClick={handleSaveGroup} className="w-full bg-[#4338CA] text-white font-bold py-3 rounded-2xl text-xs mt-2">{isEditingGroup ? 'บันทึกการแก้ไข' : 'ยืนยันสร้างห้องติว'}</button>
                 </div>
@@ -2753,16 +3023,34 @@ export default function App() {
 
             {/* PAGE 7: MAP PAGE (ปรับปรุงซ่อน Overlay ด้านล่างอย่างสมบูรณ์) */}
             {currentTab === 'map_page' && (
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar pb-24">
+              <div ref={mapPageScrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3 pb-32">
                 <div className="flex items-center gap-2">
                   <button onClick={() => setCurrentTab('home')} className="p-1 rounded-full hover:bg-slate-100">
                     <ArrowLeft className="w-5 h-5 text-slate-700" />
                   </button>
                   <h2 className="text-lg font-bold text-slate-900">แผนที่จุดนัดพบ SPU Hub</h2>
                 </div>
-                <div className="bg-white border border-slate-200 rounded-3xl p-3 space-y-3 shadow-xs">
+                  <p className="px-1 text-[10px] text-slate-500">เลื่อนล้อเมาส์เพื่อดูรายละเอียดด้านล่าง · เลื่อนสุดแล้วล้อเมาส์จะซูมแผนที่</p>
+                  <div className="bg-white border border-slate-200 rounded-3xl p-3 space-y-3 shadow-xs">
                   {/* ซ่อนกล่องล่าง Overlay ของ Campus Floor Explorer */}
-                  <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 h-[560px] relative">
+                  <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 h-[min(80dvh,720px)] min-h-[480px] relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const mapFrame = mapIframeRef.current;
+                        if (!mapFrame?.requestFullscreen) {
+                          notifyUser('เบราว์เซอร์นี้ไม่รองรับการขยายแผนที่เต็มจอ', 'error');
+                          return;
+                        }
+                        mapFrame.requestFullscreen().catch(() => {
+                          notifyUser('ขยายแผนที่เต็มจอไม่สำเร็จ', 'error');
+                        });
+                      }}
+                      className="absolute left-2 top-2 z-10 rounded-xl border border-white/30 bg-slate-950/85 px-3 py-2 text-xs font-bold text-white shadow-lg backdrop-blur"
+                      aria-label="ขยายแผนที่เต็มหน้าจอ"
+                    >
+                      ⛶ เต็มจอ
+                    </button>
                     <iframe
                       ref={mapIframeRef}
                       src="/campus-map.html"
@@ -2773,8 +3061,25 @@ export default function App() {
                         try {
                           const iframeDoc = mapIframeRef.current?.contentDocument || mapIframeRef.current?.contentWindow?.document;
                           if (iframeDoc) {
+                            if (mapIframeWheelHandlerRef.current) {
+                              iframeDoc.removeEventListener('wheel', mapIframeWheelHandlerRef.current, true);
+                            }
+                            mapIframeWheelHandlerRef.current = (event) => {
+                              const scrollContainer = mapPageScrollRef.current;
+                              if (!scrollContainer) return;
+                              const maxScrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+                              const canScroll = event.deltaY > 0
+                                ? scrollContainer.scrollTop < maxScrollTop - 1
+                                : scrollContainer.scrollTop > 0;
+                              if (!canScroll) return;
+                              event.preventDefault();
+                              event.stopImmediatePropagation();
+                              scrollContainer.scrollBy({ top: event.deltaY, behavior: 'auto' });
+                            };
+                            iframeDoc.addEventListener('wheel', mapIframeWheelHandlerRef.current, { capture: true, passive: false });
                             const style = iframeDoc.createElement('style');
                             style.textContent = `
+                              #floor-explode-panel,
                               .floor-explorer-overlay, 
                               #campus-floor-explorer, 
                               .floor-selector-panel { 
@@ -2782,6 +3087,13 @@ export default function App() {
                               }
                             `;
                             iframeDoc.head.appendChild(style);
+
+                            // นำทางแผนที่ไปยังพิกัดที่เลือกไว้ (เช่น อาคาร 9 หรือสถานที่ที่เลือก)
+                            if (selectedMapLocation && iframeDoc.defaultView?.navigateToLocation) {
+                              setTimeout(() => {
+                                iframeDoc.defaultView.navigateToLocation(selectedMapLocation);
+                              }, 300);
+                            }
                           }
                         } catch (e) {
                           console.log('Cross-origin restriction handled');
@@ -2791,9 +3103,10 @@ export default function App() {
                     />
                   </div>
                   <div className="p-3 bg-indigo-50/60 rounded-2xl border border-indigo-100 space-y-1">
-                    <span className="font-bold text-indigo-900 text-xs block">📍 อาคาร 11 (จุดนัดติวหลัก SPU)</span>
-                    <p className="text-[10px] text-slate-600 font-medium">● ชั้น 1: True Coffee & Co-Working Space (มีชุดโต๊ะทำงาน)</p>
-                    <p className="text-[10px] text-slate-600 font-medium">● ชั้น 5: สำนักหอสมุด SPU (Silent Discussion Zone)</p>
+                    <span className="font-bold text-indigo-900 text-xs block">📍 จุดนัดติวยอดนิยม SPU Hub</span>
+                    <p className="text-[10px] text-slate-600 font-medium">● อาคาร 11: ชั้น 1 True Coffee & ชั้น 5 หอสมุด SPU</p>
+                    <p className="text-[10px] text-slate-600 font-medium">● อาคาร 5: ชั้น 8 คณะ IT SPU & อาคารสยามบรมราชกุมารี</p>
+                    <p className="text-[10px] text-slate-600 font-medium">● อาคาร 9: อาคารเรียนรวมและพื้นที่กิจกรรมนักศึกษา</p>
                   </div>
                 </div>
               </div>
@@ -2801,7 +3114,7 @@ export default function App() {
 
             {/* PAGE 8: PROFILE */}
             {currentTab === 'profile' && (
-              <div className="flex-1 overflow-y-auto p-5 pb-24 space-y-4 no-scrollbar pt-4">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-5 pb-32 space-y-4 no-scrollbar pt-4">
                 <div className="flex items-center gap-2 border-b border-slate-100 pb-2"><button onClick={() => setCurrentTab('home')} className="p-1 rounded-full hover:bg-slate-100"><ArrowLeft className="w-5 h-5 text-slate-700" /></button><h2 className="text-lg font-bold text-slate-900">โปรไฟล์ผู้ใช้งาน</h2></div>
                 <div className="bg-white border border-slate-200 rounded-3xl p-5 text-center space-y-3 shadow-sm">
                   <button
