@@ -1545,31 +1545,33 @@ export default function App() {
     const file = input.files?.[0];
     input.value = '';
     if (!file) return;
+
     if (file.type && !file.type.startsWith('image/')) {
-      notifyUser('กรุณาเลือกไฟล์รูปภาพ', 'error');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      notifyUser('รูปมีขนาดใหญ่เกินไป กรุณาเลือกไฟล์ไม่เกิน 10 MB', 'error');
+      notifyUser('กรุณาเลือกไฟล์รูปภาพ (เช่น JPG, PNG, WebP)', 'error');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onerror = () => notifyUser('อ่านไฟล์รูปไม่สำเร็จ กรุณาลองเลือกรูปอีกครั้ง', 'error');
-    reader.onload = (event) => {
-      if (typeof event.target?.result !== 'string') {
-        notifyUser('เปิดไฟล์รูปไม่สำเร็จ กรุณาลองเลือกรูปอีกครั้ง', 'error');
-        return;
-      }
+    // ปรับขยายขนาดไฟล์สูงสุดเป็น 50 MB เพื่อรองรับรูปถ่ายความละเอียดสูงจากกล้องมือถือรุ่นใหม่
+    if (file.size > 50 * 1024 * 1024) {
+      notifyUser('รูปมีขนาดใหญ่เกินไป กรุณาเลือกไฟล์ไม่เกิน 50 MB', 'error');
+      return;
+    }
 
+    notifyUser('กำลังประมวลผลรูปภาพ...', 'info');
+
+    const processImage = (imgSrc, isObjectUrl = false) => {
       const img = new Image();
-      img.onerror = () => notifyUser('ไฟล์นี้ไม่สามารถเปิดเป็นรูปภาพได้', 'error');
+      img.onerror = () => {
+        if (isObjectUrl) URL.revokeObjectURL(imgSrc);
+        notifyUser('ไฟล์นี้ไม่สามารถเปิดเป็นรูปภาพได้ กรุณาลองเลือกรูปอื่น', 'error');
+      };
       img.onload = async () => {
         try {
+          if (isObjectUrl) URL.revokeObjectURL(imgSrc);
           const canvas = document.createElement('canvas');
           let width = img.width;
           let height = img.height;
-          const maxDimension = 320;
+          const maxDimension = 400; // ปรับขนาด avatar คมชัดพอดี
           if (width > height ? width > maxDimension : height > maxDimension) {
             if (width > height) {
               height *= maxDimension / width;
@@ -1583,13 +1585,15 @@ export default function App() {
           canvas.height = Math.round(height);
           const context = canvas.getContext('2d');
           if (!context) throw new Error('ไม่สามารถประมวลผลรูปภาพได้');
+          context.imageSmoothingEnabled = true;
+          context.imageSmoothingQuality = 'high';
           context.drawImage(img, 0, 0, canvas.width, canvas.height);
-          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
 
           // อัปโหลดขึ้น Supabase Storage (หากล็อกอินอยู่) พร้อมต่อท้าย ?t=${Date.now()} ป้องกัน Browser Cache
           if (user?.id) {
             try {
-              const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+              const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
               if (blob) {
                 const ext = file.name?.split('.').pop() || 'jpg';
                 const fileName = `avatar_${user.id}_${Date.now()}.${ext}`;
@@ -1627,7 +1631,29 @@ export default function App() {
           notifyUser(`เปลี่ยนรูปไม่สำเร็จ: ${error.message}`, 'error');
         }
       };
-      img.src = event.target.result;
+      img.src = imgSrc;
+    };
+
+    // ใช้ URL.createObjectURL เพื่อความรวดเร็วและประหยัดหน่วยความจำบนมือถือ
+    if (window.URL && typeof window.URL.createObjectURL === 'function') {
+      try {
+        const objectUrl = URL.createObjectURL(file);
+        processImage(objectUrl, true);
+        return;
+      } catch (err) {
+        console.warn('URL.createObjectURL failed, fallback to FileReader', err);
+      }
+    }
+
+    // Fallback ใช้ FileReader กรณีที่เบราว์เซอร์ไม่รองรับ
+    const reader = new FileReader();
+    reader.onerror = () => notifyUser('อ่านไฟล์รูปไม่สำเร็จ กรุณาลองเลือกรูปอีกครั้ง', 'error');
+    reader.onload = (event) => {
+      if (typeof event.target?.result !== 'string') {
+        notifyUser('เปิดไฟล์รูปไม่สำเร็จ กรุณาลองเลือกรูปอีกครั้ง', 'error');
+        return;
+      }
+      processImage(event.target.result, false);
     };
     reader.readAsDataURL(file);
   };
@@ -3128,7 +3154,16 @@ export default function App() {
                       <Camera className="h-3.5 w-3.5" />
                     </span>
                   </button>
-                  <p className="text-[10px] text-slate-500">แตะรูปเพื่อเปลี่ยน</p>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => avatarFileInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-semibold cursor-pointer shadow-sm transition-all"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>เปลี่ยนรูปโปรไฟล์</span>
+                    </button>
+                  </div>
                   <input
                     ref={avatarFileInputRef}
                     type="file"
@@ -3145,17 +3180,6 @@ export default function App() {
                     <button onClick={() => handleGenderChange('ชาย')} className={`flex-1 py-2.5 rounded-xl font-bold border ${selectedGender === 'ชาย' ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-600'}`}>👦 ชาย</button>
                     <button onClick={() => handleGenderChange('หญิง')} className={`flex-1 py-2.5 rounded-xl font-bold border ${selectedGender === 'หญิง' ? 'bg-pink-600 text-white' : 'bg-slate-50 text-slate-600'}`}>👧 หญิง</button>
                   </div>
-                </div>
-                <div className="bg-white border border-slate-200 rounded-3xl p-4 space-y-3 shadow-sm text-xs">
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-2"><h3 className="font-bold text-slate-800">เลือกรูปโปรไฟล์ (Avatar)</h3></div>
-                  <div className="grid grid-cols-3 gap-3 pt-1">
-                    {cartoonAvatars.map((item) => (
-                      <img key={item.id} src={item.url} onClick={() => handleSelectAvatar(item.url)} className={`w-14 h-14 rounded-full object-cover cursor-pointer border-2 bg-indigo-50 ${currentUser.avatar === item.url ? 'border-indigo-600 ring-2 ring-indigo-200' : 'border-slate-200'}`} />
-                    ))}
-                  </div>
-                  <button type="button" onClick={() => avatarFileInputRef.current?.click()} className="w-full bg-slate-50 border border-dashed border-indigo-300 text-indigo-700 font-bold py-2.5 px-3 rounded-2xl text-xs flex items-center justify-center gap-2 cursor-pointer">
-                    <span>📁 อัปโหลดรูปจากมือถือ / คอมพิวเตอร์</span>
-                  </button>
                 </div>
                 <div className="bg-white border border-slate-200 rounded-3xl p-4 space-y-3 text-xs">
                   <div><label className="text-[10px] font-bold text-slate-500 block mb-1">ชื่อเล่น / Display Name</label><input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs outline-none" /></div>
