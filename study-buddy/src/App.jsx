@@ -358,6 +358,44 @@ export default function App() {
     }
   };
 
+  // 🔔 WEB AUDIO SYNTHESIZER: เสียงกระดิ่งแจ้งเตือนนุ่มๆ (Notification Chime)
+  const playNotificationSound = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const now = ctx.currentTime;
+      // โน้ตตัวที่ 1 (E5 - 659.25 Hz)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(659.25, now);
+      gain1.gain.setValueAtTime(0.18, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.28);
+
+      // โน้ตตัวที่ 2 (B5 - 987.77 Hz)
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(987.77, now + 0.12);
+      gain2.gain.setValueAtTime(0.2, now + 0.12);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.12);
+      osc2.stop(now + 0.45);
+    } catch (e) {
+      console.log('Notification Sound Error:', e);
+    }
+  };
+
   const handleToggleLights = () => {
     playElectricZapSound();
     setIsSparking(true);
@@ -698,32 +736,110 @@ export default function App() {
     }
 
     const groupById = new Map((groups || []).map(group => [String(group.id), group]));
-    setAllPendingRequests(
-      pendingMembers
-        .filter(member => hostedGroupIds.has(String(member.group_id)))
-        .map(member => ({
-          ...member,
-          study_groups: groupById.get(String(member.group_id)) || null
-        }))
-    );
+    const validPending = pendingMembers
+      .filter(member => hostedGroupIds.has(String(member.group_id)))
+      .map(member => ({
+        ...member,
+        study_groups: groupById.get(String(member.group_id)) || null
+      }));
+    setAllPendingRequests(validPending);
+
+    // Initial Sync: ดึงคำขอเข้ากลุ่มติวที่ยังค้างอยู่เข้ากระดิ่งแจ้งเตือน
+    if (validPending.length > 0) {
+      setNotifications(prev => {
+        let updated = [...prev];
+        validPending.forEach(pm => {
+          const senderKey = `join-req-${pm.id}`;
+          if (!updated.some(n => n.senderKey === senderKey)) {
+            const groupTitle = pm.study_groups?.title || 'กลุ่มติวของคุณ';
+            updated.unshift({
+              id: `join-${pm.id}`,
+              senderKey,
+              title: '🙋‍♂ คำขอเข้าร่วมกลุ่มติวใหม่',
+              desc: `${pm.user_name} ต้องการเข้าร่วมห้อง "${groupTitle}"`,
+              time: formatTime(pm.created_at) || 'เมื่อสักครู่',
+              read: false,
+              type: 'join_request',
+              memberReqId: pm.id,
+              groupId: pm.group_id,
+              userName: pm.user_name,
+              isHandled: false
+            });
+          }
+        });
+        return updated.slice(0, 15);
+      });
+    }
   };
+
+  // 💾 โหลดและบันทึกประวัติแจ้งเตือนลง LocalStorage ป้องกันหายเมื่อรีเฟรชหน้าเว็บ
+  useEffect(() => {
+    if (!user?.id) return;
+    try {
+      const saved = localStorage.getItem(`study_buddy_notifications_${user.id}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setNotifications(parsed);
+          const hasUnread = parsed.some(n => !n.read && (n.type !== 'join_request' || !n.isHandled));
+          setHasUnreadNotification(hasUnread);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load notifications from localStorage:', e);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    try {
+      localStorage.setItem(`study_buddy_notifications_${user.id}`, JSON.stringify(notifications));
+      const hasUnread = notifications.some(n => !n.read && (n.type !== 'join_request' || !n.isHandled));
+      setHasUnreadNotification(hasUnread);
+    } catch (e) {
+      console.warn('Failed to save notifications to localStorage:', e);
+    }
+  }, [notifications, user?.id]);
 
   useEffect(() => {
     fetchAllPendingRequestsForHost();
   }, [user?.id, user?.email, studyGroups]);
 
   const showToast = (senderKey, title, message, notificationMeta = {}) => {
+    playNotificationSound();
     setToastNotification({ title, message, ...notificationMeta });
     setHasUnreadNotification(true);
     setNotifications(prev => {
       const existingIndex = prev.findIndex(n => n.senderKey === senderKey);
       let updatedList = [...prev];
       if (existingIndex !== -1) {
-        updatedList[existingIndex] = { ...updatedList[existingIndex], ...notificationMeta, desc: message, time: 'เมื่อสักครู่', read: false };
+        updatedList[existingIndex] = {
+          ...updatedList[existingIndex],
+          ...notificationMeta,
+          desc: message,
+          time: 'เมื่อสักครู่',
+          read: false
+        };
       } else {
-        updatedList = [{ id: Date.now().toString(), senderKey, title, desc: message, time: 'เมื่อสักครู่', read: false, ...notificationMeta }, ...prev];
+        updatedList = [{
+          id: Date.now().toString() + '_' + Math.random().toString(36).slice(2, 6),
+          senderKey,
+          title,
+          desc: message,
+          time: 'เมื่อสักครู่',
+          read: false,
+          ...notificationMeta
+        }, ...prev];
       }
-      return updatedList.slice(0, 6);
+
+      // จัดลำดับความสำคัญ (Priority): คำขอเข้ากลุ่มที่ยังไม่ตอบรับ > คำขอเป็นเพื่อน/ข้อความที่ยังไม่อ่าน > รายการที่อ่านแล้ว
+      updatedList.sort((a, b) => {
+        const aScore = (a.type === 'join_request' && !a.isHandled) ? 3 : (!a.read ? 2 : 1);
+        const bScore = (b.type === 'join_request' && !b.isHandled) ? 3 : (!b.read ? 2 : 1);
+        return bScore - aScore;
+      });
+
+      return updatedList.slice(0, 15);
     });
     setTimeout(() => setToastNotification(null), 5000);
   };
@@ -770,7 +886,31 @@ export default function App() {
     if (!user?.id) return;
     
     const { data: reqs } = await supabase.from('friend_requests').select('*').eq('receiver_id', user.id).eq('status', 'pending');
-    if (reqs) setFriendRequests(reqs);
+    if (reqs) {
+      setFriendRequests(reqs);
+      // Initial Sync: ดึงคำขอเป็นเพื่อนที่ยังค้างอยู่เข้ากระดิ่งแจ้งเตือน
+      if (reqs.length > 0) {
+        setNotifications(prev => {
+          let updated = [...prev];
+          reqs.forEach(req => {
+            const senderKey = `friend-req-${req.id}`;
+            if (!updated.some(n => n.senderKey === senderKey)) {
+              updated.unshift({
+                id: `freq-${req.id}`,
+                senderKey,
+                title: '👋 คำขอเป็นเพื่อนใหม่',
+                desc: `${req.sender_name} ได้ส่งคำขอเป็นเพื่อนถึงคุณ`,
+                time: formatTime(req.created_at) || 'เมื่อสักครู่',
+                read: false,
+                type: 'friend_request',
+                requestId: req.id
+              });
+            }
+          });
+          return updated.slice(0, 15);
+        });
+      }
+    }
     const { data: sentReqs } = await supabase.from('friend_requests').select('*').eq('sender_id', user.id).eq('status', 'pending');
     if (sentReqs) setSentFriendRequests(sentReqs);
 
@@ -813,6 +953,26 @@ export default function App() {
                 timestamp: new Date(last.created_at).getTime() 
               }
             }));
+
+            // Initial Sync: ดึงข้อความแชตที่ยังไม่ได้อ่านเข้ากระดิ่งแจ้งเตือน พร้อมรูปโปรไฟล์จริง
+            if (!isAlreadyRead) {
+              const friendDisplayName = cleanProfileName(f.display_name || f.email.split('@')[0]);
+              setNotifications(prev => {
+                const senderKey = `dm-${f.id}`;
+                if (prev.some(n => n.senderKey === senderKey && !n.read)) return prev;
+                const newNotif = {
+                  id: `dm-${last.id}`,
+                  senderKey,
+                  title: `💬 ข้อความใหม่จาก ${friendDisplayName}`,
+                  desc: cleanText,
+                  time: formatTime(last.created_at) || 'เมื่อสักครู่',
+                  read: false,
+                  type: 'dm',
+                  targetUser: { id: f.id, name: friendDisplayName, avatar: f.avatar || cartoonAvatars[0].url }
+                };
+                return [newNotif, ...prev.filter(n => n.senderKey !== senderKey)].slice(0, 15);
+              });
+            }
           }
         });
       }
@@ -863,7 +1023,9 @@ export default function App() {
         }));
 
         if (shouldMarkUnread) {
-          showToast(`dm-${newMsg.sender_id}`, `💬 ข้อความใหม่จาก ${newMsg.sender_name}`, cleanText, { type: 'dm', targetUser: { id: newMsg.sender_id, name: newMsg.sender_name, avatar: cartoonAvatars[0].url } });
+          const senderProfile = acceptedFriends.find(f => f.id === newMsg.sender_id);
+          const realAvatar = newMsg.sender_avatar || senderProfile?.avatar || cartoonAvatars[0].url;
+          showToast(`dm-${newMsg.sender_id}`, `💬 ข้อความใหม่จาก ${newMsg.sender_name}`, cleanText, { type: 'dm', targetUser: { id: newMsg.sender_id, name: newMsg.sender_name, avatar: realAvatar } });
         }
       })
 
@@ -1818,6 +1980,12 @@ export default function App() {
     });
     
     setRecentDMMessages(prev => ({ ...prev, [targetUser.id]: { ...prev[targetUser.id], unread: false } }));
+    // Bug 3 fix: mark DM notifications as read when opening the chat
+    setNotifications(prev => prev.map(n =>
+      (n.type === 'dm' && n.targetUser?.id === targetUser.id)
+        ? { ...n, read: true }
+        : n
+    ));
     setCurrentTab('private_chat');
   };
 
