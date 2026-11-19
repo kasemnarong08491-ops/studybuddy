@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
-import { 
+import {
   Search, Plus, Compass, User, MapPin, Calendar, ArrowRight,
-  ArrowLeft, Send, Map, LogIn, LogOut, Users, Mail, Lock, 
-  MessageCircle, X, CheckCircle, Bell, Edit, Trash2, Clock, 
+  ArrowLeft, Send, Map, LogIn, LogOut, Users, Mail, Lock,
+  MessageCircle, X, CheckCircle, Bell, Edit, Trash2, Clock,
   UserPlus, Check, ShieldAlert, Paperclip, LogOut as LeaveIcon,
   BookOpen, Sparkles, GraduationCap, ChevronRight, Zap, Sun, Moon, Palette, Camera
 } from 'lucide-react';
@@ -197,11 +197,11 @@ export default function App() {
   const mapIframeWheelHandlerRef = useRef(null);
 
   // Navigation & Search State
-  const [currentTab, setCurrentTab] = useState('home'); 
+  const [currentTab, setCurrentTab] = useState('home');
   const [activeCategory, setActiveCategory] = useState('ทั้งหมด');
   const [groupSortMode, setGroupSortMode] = useState('newest');
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   // Data States
   const [studyGroups, setStudyGroups] = useState([]);
   const [isGroupsLoading, setIsGroupsLoading] = useState(true);
@@ -328,7 +328,7 @@ export default function App() {
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
 
-      const bufferSize = ctx.sampleRate * 0.15; 
+      const bufferSize = ctx.sampleRate * 0.15;
       const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i = 0; i < bufferSize; i++) {
@@ -609,7 +609,7 @@ export default function App() {
     if (!group) return false;
     if (isHost(group)) return true;
     const currentUserId = user?.id || user?.email;
-    return groupMembers.some(m => 
+    return groupMembers.some(m =>
       (m.user_id === currentUserId || m.user_name === currentUser.name) && m.status === 'accepted'
     );
   };
@@ -627,11 +627,29 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (currentTab === 'private_chat') setTimeout(() => scrollToBottom(true, privateChatContainerRef), 30);
+    if (currentTab === 'private_chat') {
+      setTimeout(() => scrollToBottom(true, privateChatContainerRef), 30);
+      if (activePrivateMember?.id) {
+        setNotifications(prev => prev.map(n =>
+          (n.type === 'dm' && (n.targetUser?.id === activePrivateMember.id || n.senderKey === `dm-${activePrivateMember.id}`))
+            ? { ...n, read: true }
+            : n
+        ));
+      }
+    }
   }, [currentTab, activePrivateMember, privateMessages]);
 
   useEffect(() => {
-    if (currentTab === 'room_chat') setTimeout(() => scrollToBottom(false, roomChatContainerRef), 30);
+    if (currentTab === 'room_chat') {
+      setTimeout(() => scrollToBottom(false, roomChatContainerRef), 30);
+      if (selectedGroup?.id) {
+        setNotifications(prev => prev.map(n =>
+          (n.type === 'group' && String(n.groupId) === String(selectedGroup.id))
+            ? { ...n, read: true }
+            : n
+        ));
+      }
+    }
   }, [currentTab, selectedGroup, roomChatMessages]);
 
   const fetchGroupsFromSupabase = async () => {
@@ -696,10 +714,12 @@ export default function App() {
   }, [user?.id, currentUser.name]);
 
   const fetchAllPendingRequestsForHost = async () => {
-    if (!user?.id || !studyGroups.length) {
+    if (!user?.id) {
       setAllPendingRequests([]);
       return;
     }
+
+    // 2-step query (no nested joins): 1) pending group_members, 2) related study_groups/profiles
     const { data: pendingMembers, error: membersError } = await supabase
       .from('group_members')
       .select('*')
@@ -713,9 +733,18 @@ export default function App() {
       return;
     }
 
-    const hostedGroupIds = new Set(
-      studyGroups.filter(group => isHost(group)).map(group => String(group.id))
-    );
+    let hostedGroups = studyGroups.filter(group => isHost(group));
+    if (!hostedGroups.length) {
+      const orFilters = [`host_id.eq.${user.id}`];
+      if (user.email) orFilters.push(`host_id.eq.${user.email}`);
+      const { data: myGroups } = await supabase
+        .from('study_groups')
+        .select('id,title,host_id')
+        .or(orFilters.join(','));
+      if (myGroups?.length) hostedGroups = myGroups;
+    }
+
+    const hostedGroupIds = new Set(hostedGroups.map(group => String(group.id)));
     const pendingGroupIds = [...new Set(
       pendingMembers
         .map(member => member.group_id)
@@ -728,41 +757,58 @@ export default function App() {
 
     const { data: groups, error: groupsError } = await supabase
       .from('study_groups')
-      .select('id,title')
+      .select('id,title,host_id')
       .in('id', pendingGroupIds);
     if (groupsError) {
       console.error('Unable to load groups for pending requests:', groupsError);
       return;
     }
 
-    const groupById = new Map((groups || []).map(group => [String(group.id), group]));
-    const validPending = pendingMembers
-      .filter(member => hostedGroupIds.has(String(member.group_id)))
-      .map(member => ({
+    const groupById = new Map([...(hostedGroups || []), ...(groups || [])].map(group => [String(group.id), group]));
+    const hostedPending = pendingMembers.filter(member => hostedGroupIds.has(String(member.group_id)));
+
+    const pendingUserIds = [...new Set(hostedPending.map(member => member.user_id).filter(Boolean))];
+    let profileById = new Map();
+    if (pendingUserIds.length) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id,display_name,avatar')
+        .in('id', pendingUserIds);
+      if (profiles) profileById = new Map(profiles.map(profile => [String(profile.id), profile]));
+    }
+
+    const validPending = hostedPending.map(member => {
+      const profile = profileById.get(String(member.user_id));
+      return {
         ...member,
+        user_name: profile?.display_name || member.user_name,
+        user_avatar: profile?.avatar || member.user_avatar,
         study_groups: groupById.get(String(member.group_id)) || null
-      }));
+      };
+    });
+
     setAllPendingRequests(validPending);
 
-    // Initial Sync: ดึงคำขอเข้ากลุ่มติวที่ยังค้างอยู่เข้ากระดิ่งแจ้งเตือน
     if (validPending.length > 0) {
       setNotifications(prev => {
         let updated = [...prev];
         validPending.forEach(pm => {
-          const senderKey = `join-req-${pm.id}`;
-          if (!updated.some(n => n.senderKey === senderKey)) {
-            const groupTitle = pm.study_groups?.title || 'กลุ่มติวของคุณ';
+          const senderKey = `group-req-${pm.id}`;
+          const legacyKey = `join-req-${pm.id}`;
+          if (!updated.some(n => n.senderKey === senderKey || n.senderKey === legacyKey)) {
+            const groupTitle = pm.study_groups?.title || 'กลุ่มเรียน';
             updated.unshift({
-              id: `join-${pm.id}`,
+              id: `group-req-${pm.id}`,
               senderKey,
-              title: '🙋‍♂ คำขอเข้าร่วมกลุ่มติวใหม่',
-              desc: `${pm.user_name} ต้องการเข้าร่วมห้อง "${groupTitle}"`,
-              time: formatTime(pm.created_at) || 'เมื่อสักครู่',
+              title: 'มีคำขอเข้าร่วมกลุ่ม',
+              desc: `${pm.user_name || 'ผู้ใช้'} ขอเข้าร่วมกลุ่ม "${groupTitle}"`,
+              time: formatTime(pm.created_at) || '',
               read: false,
               type: 'join_request',
               memberReqId: pm.id,
               groupId: pm.group_id,
               userName: pm.user_name,
+              senderAvatar: pm.user_avatar || '',
               isHandled: false
             });
           }
@@ -832,12 +878,14 @@ export default function App() {
         }, ...prev];
       }
 
-      // จัดลำดับความสำคัญ (Priority): คำขอเข้ากลุ่มที่ยังไม่ตอบรับ > คำขอเป็นเพื่อน/ข้อความที่ยังไม่อ่าน > รายการที่อ่านแล้ว
-      updatedList.sort((a, b) => {
-        const aScore = (a.type === 'join_request' && !a.isHandled) ? 3 : (!a.read ? 2 : 1);
-        const bScore = (b.type === 'join_request' && !b.isHandled) ? 3 : (!b.read ? 2 : 1);
-        return bScore - aScore;
-      });
+      // จัดลำดับความสำคัญ (Priority): คำขอเข้ากลุ่มที่ยังไม่ตอบรับ > คำขอเป็นเพื่อนที่ยังไม่อ่าน > ข้อความที่ยังไม่อ่าน > รายการที่อ่านแล้ว
+      const getPriorityScore = (item) => {
+        if ((item.type === 'join_request' || item.type === 'group_request') && !item.isHandled) return 4;
+        if (item.type === 'friend_request' && !item.isHandled && !item.read) return 3;
+        if (!item.read) return 2;
+        return 1;
+      };
+      updatedList.sort((a, b) => getPriorityScore(b) - getPriorityScore(a));
 
       return updatedList.slice(0, 15);
     });
@@ -884,101 +932,142 @@ export default function App() {
 
   const fetchFriendStatus = async () => {
     if (!user?.id) return;
-    
-    const { data: reqs } = await supabase.from('friend_requests').select('*').eq('receiver_id', user.id).eq('status', 'pending');
-    if (reqs) {
-      setFriendRequests(reqs);
-      // Initial Sync: ดึงคำขอเป็นเพื่อนที่ยังค้างอยู่เข้ากระดิ่งแจ้งเตือน
-      if (reqs.length > 0) {
-        setNotifications(prev => {
-          let updated = [...prev];
-          reqs.forEach(req => {
-            const senderKey = `friend-req-${req.id}`;
-            if (!updated.some(n => n.senderKey === senderKey)) {
-              updated.unshift({
-                id: `freq-${req.id}`,
-                senderKey,
-                title: '👋 คำขอเป็นเพื่อนใหม่',
-                desc: `${req.sender_name} ได้ส่งคำขอเป็นเพื่อนถึงคุณ`,
-                time: formatTime(req.created_at) || 'เมื่อสักครู่',
-                read: false,
-                type: 'friend_request',
-                requestId: req.id
-              });
-            }
+
+    // Pending received requests
+    const { data: reqs, error: reqsError } = await supabase
+      .from('friend_requests')
+      .select('*')
+      .eq('receiver_id', user.id)
+      .eq('status', 'pending');
+
+    const pendingReceived = (!reqsError && reqs) ? reqs : [];
+    setFriendRequests(pendingReceived);
+
+    // Sync pending friend-request notifications with current DB state
+    setNotifications(prev => {
+      let updated = prev.filter(n => {
+        if (n.type !== 'friend_request') return true;
+        const rid = String(n.requestId ?? String(n.senderKey || '').replace('friend-req-', '').replace('freq-', ''));
+        return pendingReceived.some(r => String(r.id) === rid);
+      });
+      pendingReceived.forEach(req => {
+        const senderKey = `friend-req-${req.id}`;
+        if (!updated.some(n => n.senderKey === senderKey || String(n.requestId) === String(req.id))) {
+          updated.unshift({
+            id: `freq-${req.id}`,
+            senderKey,
+            title: 'มีคำขอเป็นเพื่อนใหม่',
+            desc: `${req.sender_name || 'ผู้ใช้'} ส่งคำขอมาเป็นเพื่อนกับคุณ`,
+            time: formatTime(req.created_at) || '',
+            read: false,
+            type: 'friend_request',
+            requestId: req.id
           });
-          return updated.slice(0, 15);
-        });
-      }
-    }
-    const { data: sentReqs } = await supabase.from('friend_requests').select('*').eq('sender_id', user.id).eq('status', 'pending');
-    if (sentReqs) setSentFriendRequests(sentReqs);
+        }
+      });
+      return updated.slice(0, 15);
+    });
 
-    const { data: sentAccepted } = await supabase.from('friend_requests').select('receiver_id').eq('sender_id', user.id).eq('status', 'accepted');
-    const { data: recvAccepted } = await supabase.from('friend_requests').select('sender_id').eq('receiver_id', user.id).eq('status', 'accepted');
+    // Pending sent requests
+    const { data: sentReqs } = await supabase
+      .from('friend_requests')
+      .select('*')
+      .eq('sender_id', user.id)
+      .eq('status', 'pending');
+    setSentFriendRequests(sentReqs || []);
 
-    const { data: sentMsgs } = await supabase.from('direct_messages').select('receiver_id').eq('sender_id', user.id);
-    const { data: recvMsgs } = await supabase.from('direct_messages').select('sender_id').eq('receiver_id', user.id);
+    // Conversation partners from 2 sources (dedupe): accepted friend_requests + direct_messages
+    const { data: acceptedReqs } = await supabase
+      .from('friend_requests')
+      .select('sender_id,receiver_id,status')
+      .eq('status', 'accepted')
+      .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`);
+
+    const { data: dmRows } = await supabase
+      .from('direct_messages')
+      .select('id,sender_id,receiver_id,created_at,text')
+      .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+      .order('created_at', { ascending: false })
+      .limit(300);
 
     const partnerIdsSet = new Set();
-    if (sentAccepted) sentAccepted.forEach(a => partnerIdsSet.add(a.receiver_id));
-    if (recvAccepted) recvAccepted.forEach(a => partnerIdsSet.add(a.sender_id));
-    if (sentMsgs) sentMsgs.forEach(m => partnerIdsSet.add(m.receiver_id));
-    if (recvMsgs) recvMsgs.forEach(m => partnerIdsSet.add(m.sender_id));
+    (acceptedReqs || []).forEach(r => {
+      const otherId = String(r.sender_id) === String(user.id) ? r.receiver_id : r.sender_id;
+      if (otherId && String(otherId) !== String(user.id)) partnerIdsSet.add(String(otherId));
+    });
+    (dmRows || []).forEach(m => {
+      const otherId = String(m.sender_id) === String(user.id) ? m.receiver_id : m.sender_id;
+      if (otherId && String(otherId) !== String(user.id)) partnerIdsSet.add(String(otherId));
+    });
 
-    const friendIds = Array.from(partnerIdsSet).filter(id => id && id !== user.id);
-
-    if (friendIds.length > 0) {
-      const { data: profiles } = await supabase.from('profiles').select('*').in('id', friendIds);
-      if (profiles) {
-        setAcceptedFriends(profiles);
-        profiles.forEach(async (f) => {
-          if (!f?.id) return;
-          const { data: msgs } = await supabase.from('direct_messages').select('*')
-            .or(`and(sender_id.eq.${user.id},receiver_id.eq.${f.id}),and(sender_id.eq.${f.id},receiver_id.eq.${user.id})`)
-            .order('created_at', { ascending: false }).limit(1);
-
-          if (msgs && msgs[0]) {
-            const last = msgs[0];
-            const isFromMe = last.sender_id === user.id;
-            const cleanText = last.text?.startsWith('[IMAGE]:') ? '📷 [ส่งรูปภาพ]' : last.text;
-            const isAlreadyRead = readMessageIdsRef.current.has(last.id) || isFromMe;
-
-            setRecentDMMessages(prev => ({
-              ...prev, 
-              [f.id]: { 
-                text: isFromMe ? `คุณ: ${cleanText}` : cleanText, 
-                time: formatTime(last.created_at), 
-                unread: !isAlreadyRead, 
-                timestamp: new Date(last.created_at).getTime() 
-              }
-            }));
-
-            // Initial Sync: ดึงข้อความแชตที่ยังไม่ได้อ่านเข้ากระดิ่งแจ้งเตือน พร้อมรูปโปรไฟล์จริง
-            if (!isAlreadyRead) {
-              const friendDisplayName = cleanProfileName(f.display_name || f.email.split('@')[0]);
-              setNotifications(prev => {
-                const senderKey = `dm-${f.id}`;
-                if (prev.some(n => n.senderKey === senderKey && !n.read)) return prev;
-                const newNotif = {
-                  id: `dm-${last.id}`,
-                  senderKey,
-                  title: `💬 ข้อความใหม่จาก ${friendDisplayName}`,
-                  desc: cleanText,
-                  time: formatTime(last.created_at) || 'เมื่อสักครู่',
-                  read: false,
-                  type: 'dm',
-                  targetUser: { id: f.id, name: friendDisplayName, avatar: f.avatar || cartoonAvatars[0].url }
-                };
-                return [newNotif, ...prev.filter(n => n.senderKey !== senderKey)].slice(0, 15);
-              });
-            }
-          }
-        });
-      }
-    } else {
+    const partnerIds = Array.from(partnerIdsSet);
+    if (partnerIds.length === 0) {
       setAcceptedFriends([]);
+      setRecentDMMessages({});
+      return;
     }
+
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('*')
+      .in('id', partnerIds);
+
+    const profileById = new Map((profiles || []).map(p => [String(p.id), p]));
+    const partners = partnerIds.map(id => profileById.get(String(id)) || { id });
+    setAcceptedFriends(partners);
+
+    const latestByPartner = new Map();
+    (dmRows || []).forEach(m => {
+      const otherId = String(m.sender_id) === String(user.id) ? m.receiver_id : m.sender_id;
+      const key = String(otherId);
+      if (!key || key === String(user.id)) return;
+      if (!latestByPartner.has(key)) latestByPartner.set(key, m);
+    });
+
+    setRecentDMMessages(() => {
+      const next = {};
+      latestByPartner.forEach((last, pid) => {
+        const isFromMe = String(last.sender_id) === String(user.id);
+        const cleanText = last.text?.startsWith('[IMAGE]:') ? '[รูปภาพ]' : (last.text || '');
+        const isAlreadyRead = readMessageIdsRef.current.has(last.id) || isFromMe;
+        next[pid] = {
+          text: isFromMe ? `คุณ: ${cleanText}` : cleanText,
+          time: formatTime(last.created_at),
+          unread: !isAlreadyRead && !isFromMe,
+          timestamp: new Date(last.created_at).getTime() || Date.now()
+        };
+      });
+      return next;
+    });
+
+    setNotifications(prev => {
+      let updated = [...prev];
+      latestByPartner.forEach((last, pid) => {
+        const profile = profileById.get(String(pid)) || partners.find(p => String(p.id) === String(pid));
+        const isFromMe = String(last.sender_id) === String(user.id);
+        const cleanText = last.text?.startsWith('[IMAGE]:') ? '[รูปภาพ]' : (last.text || '');
+        const isAlreadyRead = readMessageIdsRef.current.has(last.id) || isFromMe;
+        const friendDisplayName = cleanProfileName(profile?.display_name || profile?.email?.split('@')[0] || 'ผู้ใช้');
+        const senderKey = `dm-${pid}`;
+        if (!isAlreadyRead) {
+          if (!updated.some(n => n.senderKey === senderKey && !n.read)) {
+            updated = [{
+              id: `dm-${last.id}`,
+              senderKey,
+              title: `ข้อความจาก ${friendDisplayName}`,
+              desc: cleanText,
+              time: formatTime(last.created_at) || '',
+              read: false,
+              type: 'dm',
+              targetUser: { id: pid, name: friendDisplayName, avatar: profile?.avatar || cartoonAvatars[0].url }
+            }, ...updated.filter(n => n.senderKey !== senderKey)];
+          }
+        } else {
+          updated = updated.map(n => n.senderKey === senderKey ? { ...n, read: true } : n);
+        }
+      });
+      return updated.slice(0, 15);
+    });
   };
 
   useEffect(() => { fetchFriendStatus(); }, [user]);
@@ -991,7 +1080,7 @@ export default function App() {
         const newMsg = payload.new;
         const isFromMe = newMsg.sender_id === user.id;
         const targetFriendId = isFromMe ? newMsg.receiver_id : newMsg.sender_id;
-        
+
         setAcceptedFriends(prev => {
           const exists = prev.some(f => f.id === targetFriendId);
           if (!exists) {
@@ -1014,10 +1103,10 @@ export default function App() {
 
         setRecentDMMessages(prev => ({
           ...prev,
-          [targetFriendId]: { 
-            text: isFromMe ? `คุณ: ${cleanText}` : cleanText, 
-            time: formatTime(newMsg.created_at), 
-            unread: shouldMarkUnread, 
+          [targetFriendId]: {
+            text: isFromMe ? `คุณ: ${cleanText}` : cleanText,
+            time: formatTime(newMsg.created_at),
+            unread: shouldMarkUnread,
             timestamp: new Date(newMsg.created_at).getTime() || Date.now()
           }
         }));
@@ -1031,23 +1120,33 @@ export default function App() {
 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests' }, (payload) => {
         fetchFriendStatus();
-        const req = payload.new;
-        if (req && req.receiver_id === user.id && req.status === 'pending') {
-          showToast(`friend-req-${req.id}`, `👋 คำขอเป็นเพื่อนใหม่`, `${req.sender_name} ได้ส่งคำขอเป็นเพื่อนถึงคุณ`);
-        } else if (req && (req.sender_id === user.id || req.receiver_id === user.id) && req.status === 'accepted') {
-          showToast(`friend-acc-${req.id}`, `🎉 ตอบรับคำขอเป็นเพื่อนแล้ว`, `คุณและเพื่อนสามารถแชตส่วนตัวกันได้แล้ว!`);
+        const req = payload.new || payload.old;
+        if (!req) return;
+        if (payload.eventType === 'INSERT' && String(req.receiver_id) === String(user.id) && req.status === 'pending') {
+          showToast(`friend-req-${req.id}`, 'มีคำขอเป็นเพื่อนใหม่', `${req.sender_name || 'ผู้ใช้'} ส่งคำขอมาเป็นเพื่อนกับคุณ`, { type: 'friend_request', requestId: req.id });
+        } else if ((payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') && req.status === 'accepted' && (String(req.sender_id) === String(user.id) || String(req.receiver_id) === String(user.id))) {
+          setFriendRequests(prev => prev.filter(r => String(r.id) !== String(req.id)));
+          setSentFriendRequests(prev => prev.filter(r => String(r.id) !== String(req.id)));
+          setNotifications(prev => prev.filter(n => !(n.type === 'friend_request' && (String(n.requestId) === String(req.id) || n.senderKey === `friend-req-${req.id}`))));
+          if (String(req.sender_id) === String(user.id)) {
+            showToast(`friend-acc-${req.id}`, 'คำขอเป็นเพื่อนได้รับการยอมรับ', 'ตอนนี้คุณสามารถเริ่มแชทส่วนตัวได้แล้ว');
+          }
+        } else if (payload.eventType === 'DELETE' && (String(req.sender_id) === String(user.id) || String(req.receiver_id) === String(user.id))) {
+          setFriendRequests(prev => prev.filter(r => String(r.id) !== String(req.id)));
+          setSentFriendRequests(prev => prev.filter(r => String(r.id) !== String(req.id)));
+          setNotifications(prev => prev.filter(n => !(n.type === 'friend_request' && (String(n.requestId) === String(req.id) || n.senderKey === `friend-req-${req.id}`))));
         }
       })
 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'group_members' }, async (payload) => {
         fetchAllPendingRequestsForHost();
         const m = payload.new;
-        const currentUserId = user?.id || user?.email;
+        const currentUserId = user?.id;
 
-        if (m && (m.user_id === currentUserId || m.user_name === currentUser.name)) {
+        if (m && (String(m.user_id) === String(currentUserId) || m.user_name === currentUser.name)) {
           if (m.status === 'accepted') {
             setMyJoinedGroupIds(prev => Array.from(new Set([...prev, m.group_id])));
-            
+
             let approvedGroup = studyGroups.find(g => String(g.id) === String(m.group_id));
             if (!approvedGroup && m.group_id != null) {
               const { data: fetchedG } = await supabase.from('study_groups').select('*').eq('id', m.group_id).single();
@@ -1055,7 +1154,7 @@ export default function App() {
             }
 
             if (approvedGroup) {
-              showToast(`approved-${m.group_id}`, `🎉 เข้าสู่ห้องติวสำเร็จ!`, `หัวหน้าห้องอนุมัติคุณเข้าสู่ "${approvedGroup.title}" เรียบร้อยแล้ว กดที่นี่เพื่อเข้าห้องติวได้เลย`, { type: 'group', groupId: m.group_id, groupObj: approvedGroup });
+              showToast(`approved-${m.group_id}`, 'คำขอเข้าร่วมกลุ่มได้รับการอนุมัติ', `คุณสามารถเข้าร่วมกลุ่ม "${approvedGroup.title}" ได้แล้ว`, { type: 'group', groupId: m.group_id, groupObj: approvedGroup });
             }
           }
         }
@@ -1066,42 +1165,65 @@ export default function App() {
           });
         }
 
-        if (m && m.status === 'pending') {
-          const tg = studyGroups.find(g => String(g.id) === String(m.group_id));
+        if (payload.eventType === 'INSERT' && m && m.status === 'pending' && m.group_id != null) {
+          let tg = studyGroups.find(g => String(g.id) === String(m.group_id));
+          if (!tg) {
+            const { data: fetchedGroup } = await supabase.from('study_groups').select('id,title,host_id').eq('id', m.group_id).single();
+            if (fetchedGroup) tg = fetchedGroup;
+          }
           if (isHost(tg)) {
-            showToast(`join-req-${m.id}`, `🙋‍♂ คำขอเข้าร่วมกลุ่มติวใหม่`, `${m.user_name} ต้องการเข้าร่วมห้อง "${tg?.title || ''}"`, { type: 'join_request', memberReqId: m.id, groupId: m.group_id, userName: m.user_name, isHandled: false });
+            showToast(`group-req-${m.id}`, 'มีคำขอเข้าร่วมกลุ่ม', `${m.user_name || 'ผู้ใช้'} ขอเข้าร่วมกลุ่ม "${tg?.title || ''}"`, {
+              type: 'join_request',
+              id: `group-req-${m.id}`,
+              memberReqId: m.id,
+              groupId: m.group_id,
+              userName: m.user_name,
+              senderAvatar: m.user_avatar || '',
+              isHandled: false
+            });
           }
         }
       })
-
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_messages' }, (payload) => {
         const gMsg = payload.new;
+        if (!gMsg) return;
         const inRoom = currentTab === 'room_chat' && String(selectedGroup?.id) === String(gMsg.group_id);
-        const isFromMe = gMsg.sender_name === currentUser.name;
-        const cleanText = gMsg.text?.startsWith('[IMAGE]:') ? '📷 [ส่งรูปภาพ]' : gMsg.text;
+        const senderId = gMsg.user_id ?? gMsg.sender_id;
+        const isFromMe = (senderId != null && String(senderId) === String(user.id)) || gMsg.sender_name === currentUser.name;
+        const cleanText = gMsg.text?.startsWith('[IMAGE]:') ? '[รูปภาพ]' : (gMsg.text || '');
+        const isMemberOfGroup = myJoinedGroupIds.some(id => String(id) === String(gMsg.group_id))
+          || studyGroups.some(g => String(g.id) === String(gMsg.group_id) && isHost(g));
 
-        const shouldMarkUnread = !isFromMe && !inRoom && !readMessageIdsRef.current.has(gMsg.id);
-        
-        setRecentGroupMessages(prev => ({
-          ...prev,
-          [gMsg.group_id]: { 
-            text: `${gMsg.sender_name}: ${cleanText}`, 
-            time: formatTime(gMsg.created_at), 
-            unread: shouldMarkUnread, 
-            timestamp: new Date(gMsg.created_at).getTime() || Date.now() 
-          }
-        }));
-        
+        const shouldMarkUnread = !isFromMe && !inRoom && isMemberOfGroup && !readMessageIdsRef.current.has(gMsg.id);
+
+        if (isMemberOfGroup || inRoom || String(senderId) === String(user.id)) {
+          setRecentGroupMessages(prev => ({
+            ...prev,
+            [gMsg.group_id]: {
+              text: `${gMsg.sender_name}: ${cleanText}`,
+              time: formatTime(gMsg.created_at),
+              unread: inRoom ? false : !!(prev[gMsg.group_id]?.unread || shouldMarkUnread),
+              timestamp: new Date(gMsg.created_at).getTime() || Date.now()
+            }
+          }));
+        }
+
         if (shouldMarkUnread) {
           const tg = studyGroups.find(g => String(g.id) === String(gMsg.group_id));
-          showToast(`group-${gMsg.group_id}`, `📢 ข้อความกลุ่มติวใหม่ (${gMsg.sender_name})`, cleanText, { type: 'group', groupId: gMsg.group_id, groupObj: tg });
+          showToast(`group-msg-${gMsg.group_id}`, `ข้อความใหม่ในกลุ่ม${tg?.title ? ` "${tg.title}"` : ''}`, `${gMsg.sender_name}: ${cleanText}`, {
+            type: 'group',
+            id: `group-msg-${gMsg.group_id}`,
+            groupId: gMsg.group_id,
+            groupObj: tg,
+            senderAvatar: gMsg.sender_avatar || '',
+            senderName: gMsg.sender_name || ''
+          });
         }
       })
 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
         const updatedProfile = payload.new;
         if (!updatedProfile || !updatedProfile.id) return;
-
         // 1. If it's my own profile updated from another session/device
         if (user?.id && updatedProfile.id === user.id) {
           const freshAvatar = updatedProfile.avatar || cartoonAvatars[0].url;
@@ -1114,7 +1236,7 @@ export default function App() {
           try {
             localStorage.setItem('user_profile_avatar', freshAvatar);
             if (updatedProfile.gender) localStorage.setItem('user_profile_gender', updatedProfile.gender);
-          } catch {}
+          } catch { }
         }
 
         // 2. Realtime sync to accepted friends (Chat List & Friends List)
@@ -1167,7 +1289,7 @@ export default function App() {
       }).subscribe();
 
     return () => supabase.removeChannel(globalChannel);
-  }, [user, currentUser.name, currentTab, activePrivateMember, selectedGroup, studyGroups]);
+  }, [user, currentUser.name, currentTab, activePrivateMember, selectedGroup, studyGroups, myJoinedGroupIds]);
 
   // Realtime Friends Search
   const activeSearchQuery = friendSearchTerm || searchTerm;
@@ -1194,8 +1316,8 @@ export default function App() {
           .filter(p => p.id !== user?.id)
           .map(p => ({
             id: p.id,
-              name: cleanProfileName(p.display_name || p.email?.split('@')[0] || 'เพื่อน'),
-              faculty: p.faculty || '',
+            name: cleanProfileName(p.display_name || p.email?.split('@')[0] || 'เพื่อน'),
+            faculty: p.faculty || '',
             avatar: p.avatar || cartoonAvatars[0].url,
             email: p.email || ''
           })));
@@ -1209,13 +1331,18 @@ export default function App() {
   useEffect(() => {
     if (!user?.id || !selectedGroup?.id || currentTab !== 'room_chat') return;
     setRecentGroupMessages(prev => ({ ...prev, [selectedGroup.id]: { ...prev[selectedGroup.id], unread: false } }));
+    setNotifications(prev => prev.map(n =>
+      (n.senderKey === `group-msg-${selectedGroup.id}` || n.senderKey === `group-${selectedGroup.id}` || (n.type === 'group' && String(n.groupId) === String(selectedGroup.id)))
+        ? { ...n, read: true }
+        : n
+    ));
     setRoomChatMessages([]);
     setRoomChatLoadError('');
     setNewRoomMessageMarkerId(null);
     setNewRoomMessagesCount(0);
     unseenRoomMessageIdsRef.current.clear();
     roomChatAtBottomRef.current = true;
-    
+
     const fetchGroupData = async () => {
       setIsRoomChatLoading(true);
       try {
@@ -1261,28 +1388,28 @@ export default function App() {
   // PRIVATE CHAT REALTIME LISTENER
   useEffect(() => {
     if (!activePrivateMember?.id || !user?.id || currentTab !== 'private_chat') return;
-    
+
     setRecentDMMessages(prev => ({ ...prev, [activePrivateMember.id]: { ...prev[activePrivateMember.id], unread: false } }));
-    
+
     const fetchDMs = async () => {
       const { data, error } = await supabase.from('direct_messages').select('*')
         .or(`and(sender_id.eq.${user.id},receiver_id.eq.${activePrivateMember.id}),and(sender_id.eq.${activePrivateMember.id},receiver_id.eq.${user.id})`)
         .order('created_at', { ascending: true });
-      
+
       if (!error && data) {
         data.forEach(m => markMessageAsRead(m.id));
         setPrivateMessages(data);
         setTimeout(() => scrollToBottom(true, privateChatContainerRef), 30);
       }
     };
-    
+
     fetchDMs();
 
     const dmChannel = supabase.channel(`direct-messages-realtime-${user.id}-${activePrivateMember.id}-${Date.now()}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, (payload) => {
         const newMsg = payload.new;
-        if ((newMsg.sender_id === user.id && newMsg.receiver_id === activePrivateMember.id) || 
-            (newMsg.sender_id === activePrivateMember.id && newMsg.receiver_id === user.id)) {
+        if ((newMsg.sender_id === user.id && newMsg.receiver_id === activePrivateMember.id) ||
+          (newMsg.sender_id === activePrivateMember.id && newMsg.receiver_id === user.id)) {
           markMessageAsRead(newMsg.id);
           setPrivateMessages(prev => {
             if (prev.some(m => String(m.id) === String(newMsg.id))) return prev;
@@ -1300,14 +1427,103 @@ export default function App() {
   const handleSendFriendRequest = async (targetUser) => {
     if (!user?.id || !targetUser?.id) return;
     const { error } = await supabase.from('friend_requests').insert([{ sender_id: user.id, sender_name: currentUser.name, receiver_id: targetUser.id, receiver_name: targetUser.name, status: 'pending' }]);
-    if (error) notifyUser('ส่งคำขอไม่สำเร็จ: ' + error.message);
-    else { notifyUser(`ส่งคำขอเป็นเพื่อนถึง ${targetUser.name} เรียบร้อยแล้ว!`); fetchFriendStatus(); }
+    if (error) notifyUser('ส่งคำขอเป็นเพื่อนไม่สำเร็จ: ' + error.message);
+    else { notifyUser(`ส่งคำขอเป็นเพื่อนถึง ${targetUser.name || 'ผู้ใช้'} แล้ว`); fetchFriendStatus(); }
   };
 
   const handleAcceptFriendRequest = async (request) => {
     if (request?.id == null) return;
     const { error } = await supabase.from('friend_requests').update({ status: 'accepted' }).eq('id', request.id);
-    if (!error) { notifyUser(`ตอบรับคำขอจาก ${request.sender_name} เรียบร้อยแล้ว!`); fetchFriendStatus(); }
+    if (!error) {
+      notifyUser(`ตอบรับคำขอจาก ${request.sender_name || 'เพื่อน'} เรียบร้อยแล้ว!`);
+      setFriendRequests(prev => prev.filter(r => r.id !== request.id));
+      setNotifications(prev => prev.map(n => {
+        if (n.type === 'friend_request' && (n.requestId === request.id || n.senderKey === `friend-req-${request.id}`)) {
+          return { ...n, isHandled: true, read: true, statusText: 'เป็นเพื่อนกันแล้ว' };
+        }
+        return n;
+      }));
+      fetchFriendStatus();
+    } else {
+      notifyUser('ทำรายการไม่สำเร็จ: ' + error.message);
+    }
+  };
+
+  const handleRejectFriendRequest = async (request) => {
+    if (request?.id == null) return;
+    const { error } = await supabase.from('friend_requests').update({ status: 'rejected' }).eq('id', request.id);
+    if (!error) {
+      notifyUser(`ปฏิเสธคำขอจาก ${request.sender_name || 'เพื่อน'} เรียบร้อยแล้ว`);
+      setFriendRequests(prev => prev.filter(r => r.id !== request.id));
+      setNotifications(prev => prev.map(n => {
+        if (n.type === 'friend_request' && (n.requestId === request.id || n.senderKey === `friend-req-${request.id}`)) {
+          return { ...n, isHandled: true, read: true, statusText: 'ปฏิเสธแล้ว' };
+        }
+        return n;
+      }));
+      fetchFriendStatus();
+    } else {
+      notifyUser('ทำรายการไม่สำเร็จ: ' + error.message);
+    }
+  };
+
+  const handleCancelFriendRequest = async (targetUserId) => {
+    if (!user?.id || !targetUserId) return;
+    const { error } = await supabase.from('friend_requests').delete()
+      .eq('sender_id', user.id)
+      .eq('receiver_id', targetUserId)
+      .eq('status', 'pending');
+    if (!error) {
+      notifyUser('ยกเลิกคำขอเป็นเพื่อนแล้ว');
+      setSentFriendRequests(prev => prev.filter(r => r.receiver_id !== targetUserId));
+      fetchFriendStatus();
+    } else {
+      const { error: updateError } = await supabase.from('friend_requests').update({ status: 'cancelled' })
+        .eq('sender_id', user.id)
+        .eq('receiver_id', targetUserId)
+        .eq('status', 'pending');
+      if (!updateError) {
+        notifyUser('ยกเลิกคำขอเป็นเพื่อนแล้ว');
+        setSentFriendRequests(prev => prev.filter(r => r.receiver_id !== targetUserId));
+        fetchFriendStatus();
+      } else {
+        notifyUser('ยกเลิกคำขอไม่สำเร็จ: ' + error.message);
+      }
+    }
+  };
+
+  const handleUnfriend = async (friendUserId) => {
+    if (!user?.id || !friendUserId) return;
+    if (!window.confirm('ต้องการลบเพื่อนคนนี้ใช่หรือไม่?')) return;
+    const { error } = await supabase
+      .from('friend_requests')
+      .delete()
+      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${friendUserId}),and(sender_id.eq.${friendUserId},receiver_id.eq.${user.id})`);
+    if (error) {
+      const { error: updateErr } = await supabase
+        .from('friend_requests')
+        .update({ status: 'unfriended' })
+        .or(`and(sender_id.eq.${user.id},receiver_id.eq.${friendUserId}),and(sender_id.eq.${friendUserId},receiver_id.eq.${user.id})`);
+      if (updateErr) {
+        showToast(`unfriend-err-${friendUserId}`, 'เกิดข้อผิดพลาด', 'ไม่สามารถลบเพื่อนได้: ' + error.message);
+        return;
+      }
+    }
+    setAcceptedFriends(prev => prev.filter(f => String(f.id) !== String(friendUserId)));
+    setFriendRequests(prev => prev.filter(r => String(r.sender_id) !== String(friendUserId) && String(r.receiver_id) !== String(friendUserId)));
+    setSentFriendRequests(prev => prev.filter(r => String(r.sender_id) !== String(friendUserId) && String(r.receiver_id) !== String(friendUserId)));
+    setRecentDMMessages(prev => {
+      const next = { ...prev };
+      delete next[friendUserId];
+      delete next[String(friendUserId)];
+      return next;
+    });
+    if (activePrivateMember && String(activePrivateMember.id) === String(friendUserId)) {
+      setActivePrivateMember(null);
+      setCurrentTab('my_groups');
+    }
+    showToast(`unfriend-${friendUserId}`, 'ลบเพื่อนเรียบร้อยแล้ว', '');
+    fetchFriendStatus();
   };
 
   const handleSendPrivateMsg = async (attachedImage = null) => {
@@ -1315,11 +1531,11 @@ export default function App() {
     if (!textToSend || !activePrivateMember?.id || !user) return;
     if (!attachedImage) setPrivateMsgInput('');
 
-    const { data, error } = await supabase.from('direct_messages').insert([{ 
-      sender_id: user.id, 
-      sender_name: currentUser.name, 
-      receiver_id: activePrivateMember.id, 
-      receiver_name: activePrivateMember.name, 
+    const { data, error } = await supabase.from('direct_messages').insert([{
+      sender_id: user.id,
+      sender_name: currentUser.name,
+      receiver_id: activePrivateMember.id,
+      receiver_name: activePrivateMember.name,
       text: textToSend
     }]).select();
 
@@ -1328,14 +1544,14 @@ export default function App() {
       setPrivateMessages(prev => [...prev, data[0]]);
       setTimeout(() => scrollToBottom(true, privateChatContainerRef), 10);
       const cleanText = attachedImage ? '📷 [ส่งรูปภาพ]' : textToSend;
-      setRecentDMMessages(prev => ({ 
-        ...prev, 
-        [activePrivateMember.id]: { 
-          text: `คุณ: ${cleanText}`, 
-          time: 'เมื่อสักครู่', 
-          unread: false, 
-          timestamp: Date.now() 
-        } 
+      setRecentDMMessages(prev => ({
+        ...prev,
+        [activePrivateMember.id]: {
+          text: `คุณ: ${cleanText}`,
+          time: 'เมื่อสักครู่',
+          unread: false,
+          timestamp: Date.now()
+        }
       }));
     }
   };
@@ -1358,11 +1574,11 @@ export default function App() {
     window.setTimeout(() => setIsRoomSendAnimating(false), 500);
     if (!attachedImage) setRoomChatMsg('');
 
-    const { data, error } = await supabase.from('group_messages').insert([{ 
-      group_id: selectedGroup.id, 
+    const { data, error } = await supabase.from('group_messages').insert([{
+      group_id: selectedGroup.id,
       user_id: user.id,
-      sender_name: currentUser.name, 
-      sender_avatar: currentUser.avatar, 
+      sender_name: currentUser.name,
+      sender_avatar: currentUser.avatar,
       text: textToSend
     }]).select();
 
@@ -1376,14 +1592,14 @@ export default function App() {
       }, 650);
       setTimeout(() => scrollToBottom(true, roomChatContainerRef), 10);
       const cleanText = attachedImage ? '📷 [ส่งรูปภาพ]' : textToSend;
-      setRecentGroupMessages(prev => ({ 
-        ...prev, 
-        [selectedGroup.id]: { 
-          text: `คุณ: ${cleanText}`, 
-          time: 'เมื่อสักครู่', 
-          unread: false, 
-          timestamp: Date.now() 
-        } 
+      setRecentGroupMessages(prev => ({
+        ...prev,
+        [selectedGroup.id]: {
+          text: `คุณ: ${cleanText}`,
+          time: 'เมื่อสักครู่',
+          unread: false,
+          timestamp: Date.now()
+        }
       }));
     } else if (error) {
       notifyUser('ส่งข้อความไม่สำเร็จ: ' + error.message);
@@ -1433,51 +1649,56 @@ export default function App() {
   const handleRequestJoinRoom = async (group) => {
     if (group?.id == null) return;
     if (!user?.id) {
-      notifyUser('กรุณาเข้าสู่ระบบก่อนเข้าร่วมห้องติว');
+      notifyUser('กรุณาเข้าสู่ระบบก่อน');
       return;
     }
 
     setSelectedGroup(group);
     const userId = user.id;
-    
-    if (isHost(group)) { 
-      setMyJoinedGroupIds(prev => Array.from(new Set([...prev, group.id]))); 
-      setCurrentTab('room_chat'); 
-      return; 
+
+    if (isHost(group)) {
+      setMyJoinedGroupIds(prev => Array.from(new Set([...prev, group.id])));
+      setCurrentTab('room_chat');
+      return;
     }
-    
+
+    if (Number(group.current_members || 0) >= Number(group.max_members || 5)) {
+      notifyUser('กลุ่มนี้เต็มแล้ว ไม่สามารถขอเข้าร่วมได้');
+      return;
+    }
+
     const { data: existing, error: lookupError } = await supabase.from('group_members')
       .select('*')
       .eq('group_id', group.id)
       .eq('user_id', userId);
 
     if (lookupError) {
-      notifyUser('ตรวจสอบสถานะการเข้าร่วมไม่สำเร็จ: ' + lookupError.message);
+      notifyUser('ตรวจสอบสถานะการเข้าร่วมกลุ่มไม่สำเร็จ: ' + lookupError.message);
       return;
     }
 
     if (!existing || existing.length === 0) {
-      const { error } = await supabase.from('group_members').insert([{ 
-        group_id: group.id, 
-        user_id: userId, 
-        user_name: currentUser.name, 
-        user_avatar: currentUser.avatar, 
-        status: 'pending' 
+      const { error } = await supabase.from('group_members').insert([{
+        group_id: group.id,
+        user_id: userId,
+        user_name: currentUser.name,
+        user_avatar: currentUser.avatar,
+        status: 'pending'
       }]);
       if (error) {
-        notifyUser('ส่งคำขอเข้าร่วมไม่สำเร็จ: ' + error.message);
+        notifyUser('ส่งคำขอเข้าร่วมกลุ่มไม่สำเร็จ: ' + error.message);
       } else {
-        notifyUser('ส่งคำขอเข้าร่วมกลุ่มติวเรียบร้อยแล้ว กรุณารอหัวหน้าห้องกดอนุมัติก่อนนะครับ');
+        notifyUser('ส่งคำขอเข้าร่วมกลุ่มเรียบร้อยแล้ว รอการอนุมัติจากหัวหน้ากลุ่ม');
       }
     } else {
       const myMember = existing[0];
       if (myMember.status === 'accepted') {
-        setMyJoinedGroupIds(prev => Array.from(new Set([...prev, group.id]))); 
+        setMyJoinedGroupIds(prev => Array.from(new Set([...prev, group.id])));
         setCurrentTab('room_chat');
       } else if (myMember.status === 'pending') {
-        notifyUser('คำขอของคุณกำลังรอการอนุมัติจากหัวหน้าห้อง จึงยังไม่สามารถเข้าห้องแชตได้ครับ');
+        notifyUser('คำขอของคุณกำลังรอการอนุมัติจากหัวหน้ากลุ่ม');
       } else {
-        notifyUser('คำขอเข้าร่วมห้องนี้ของคุณถูกปฏิเสธ');
+        notifyUser('ไม่สามารถเข้าร่วมกลุ่มนี้ได้ในขณะนี้');
       }
     }
   };
@@ -1485,24 +1706,32 @@ export default function App() {
   const handleLeaveGroup = async (group = selectedGroup) => {
     if (group?.id == null) return;
     if (!user?.id) {
-      notifyUser('กรุณาเข้าสู่ระบบก่อนออกจากกลุ่มติว');
+      notifyUser('กรุณาเข้าสู่ระบบก่อนออกจากกลุ่ม');
       return;
     }
-    if (confirm(`คุณต้องการออกจากกลุ่มติว "${group.title}" ใช่หรือไม่?`)) {
+    if (confirm(`ต้องการออกจากกลุ่ม "${group.title}" ใช่หรือไม่?`)) {
       const { data, error } = await supabase.from('group_members')
         .delete()
         .eq('group_id', group.id)
         .eq('user_id', user.id)
         .select('id');
       if (error || !data?.length) {
-        notifyUser(error ? 'ออกจากกลุ่มไม่สำเร็จ: ' + error.message : 'ไม่พบสมาชิกของคุณในกลุ่มนี้ จึงยังออกจากกลุ่มไม่ได้');
+        notifyUser(error ? 'ออกจากกลุ่มไม่สำเร็จ: ' + error.message : 'ไม่พบสถานะสมาชิกในกลุ่มนี้');
         return;
       }
-      notifyUser('คุณออกจากกลุ่มติวเรียบร้อยแล้ว');
+      notifyUser('ออกจากกลุ่มเรียบร้อยแล้ว');
       setMyJoinedGroupIds(prev => prev.filter(id => String(id) !== String(group.id)));
+
+      const { data: acceptedList } = await supabase.from('group_members').select('*').eq('group_id', group.id).eq('status', 'accepted');
+      const newCount = (acceptedList ? acceptedList.length : 0) + 1;
+      await supabase.from('study_groups').update({ current_members: newCount }).eq('id', group.id);
+      setStudyGroups(prev => prev.map(g => String(g.id) === String(group.id) ? { ...g, current_members: newCount } : g));
+
       if (String(selectedGroup?.id) === String(group.id)) {
         setSelectedGroup(null);
         setCurrentTab('home');
+      } else {
+        setSelectedGroup(prev => prev && String(prev.id) === String(group.id) ? { ...prev, current_members: newCount } : prev);
       }
       fetchGroupsFromSupabase();
     }
@@ -1510,34 +1739,49 @@ export default function App() {
 
   const handleApproveMember = async (memberId, status, notifId = null) => {
     if (memberId == null || !['accepted', 'rejected'].includes(status)) return;
+    const pendingReq = allPendingRequests.find(req => String(req.id) === String(memberId))
+      || (notifId ? notifications.find(n => String(n.id) === String(notifId) || String(n.memberReqId) === String(memberId)) : null)
+      || notifications.find(n => String(n.memberReqId) === String(memberId));
+    const targetGroupId = pendingReq?.group_id
+      || groupMembers.find(m => String(m.id) === String(memberId))?.group_id
+      || selectedGroup?.id
+      || null;
+
     const { error } = await supabase.from('group_members').update({ status }).eq('id', memberId);
     if (!error) {
-      notifyUser(status === 'accepted' ? 'อนุมัติสมาชิกเรียบร้อยแล้ว!' : 'ปฏิเสธคำขอเรียบร้อยแล้ว');
-      setGroupMembers(prev => prev.map(m => m.id === memberId ? { ...m, status } : m));
-      setAllPendingRequests(prev => prev.filter(req => req.id !== memberId));
-      
-      setNotifications(prev => prev.map(n => {
-        if (n.memberReqId === memberId || n.id === notifId) {
-          return { ...n, isHandled: true, statusText: status === 'accepted' ? 'อนุมัติแล้ว' : 'ปฏิเสธแล้ว' };
-        }
-        return n;
-      }));
+      notifyUser(status === 'accepted' ? 'อนุมัติสมาชิกเรียบร้อยแล้ว' : 'ปฏิเสธคำขอเรียบร้อยแล้ว');
+      setGroupMembers(prev => prev.map(m => String(m.id) === String(memberId) ? { ...m, status } : m));
+      setAllPendingRequests(prev => prev.filter(req => String(req.id) !== String(memberId)));
 
-      if (toastNotification && toastNotification.memberReqId === memberId) {
+      setNotifications(prev => prev.filter(n => !(
+        String(n.memberReqId) === String(memberId)
+        || String(n.id) === String(notifId)
+        || n.senderKey === `group-req-${memberId}`
+        || n.senderKey === `join-req-${memberId}`
+      )));
+
+      if (toastNotification && String(toastNotification.memberReqId) === String(memberId)) {
         setToastNotification(null);
       }
-      
-      if (status === 'accepted' && selectedGroup?.id != null) {
-        const { data: acceptedList } = await supabase.from('group_members').select('*').eq('group_id', selectedGroup.id).eq('status', 'accepted');
-        const newCount = (acceptedList ? acceptedList.length : 0) + 1;
-        await supabase.from('study_groups').update({ current_members: newCount }).eq('id', selectedGroup.id);
-        setSelectedGroup(prev => ({ ...prev, current_members: newCount }));
+
+      if (targetGroupId != null) {
+        if (status === 'accepted') {
+          const { data: acceptedList } = await supabase.from('group_members').select('*').eq('group_id', targetGroupId).eq('status', 'accepted');
+          const newCount = (acceptedList ? acceptedList.length : 0) + 1;
+          await supabase.from('study_groups').update({ current_members: newCount }).eq('id', targetGroupId);
+          setSelectedGroup(prev => prev && String(prev.id) === String(targetGroupId) ? { ...prev, current_members: newCount } : prev);
+          setStudyGroups(prev => prev.map(g => String(g.id) === String(targetGroupId) ? { ...g, current_members: newCount } : g));
+        }
+        if (selectedGroup?.id != null && String(selectedGroup.id) === String(targetGroupId)) {
+          const { data: members } = await supabase.from('group_members').select('*').eq('group_id', targetGroupId);
+          if (members) setGroupMembers(members);
+        }
       }
+      fetchAllPendingRequestsForHost();
     } else {
-      notifyUser('ทำรายการไม่สำเร็จ: ' + error.message);
+      notifyUser('อัปเดตคำขอไม่สำเร็จ: ' + error.message);
     }
   };
-
   const handleDeleteGroup = async () => {
     if (selectedGroup?.id == null) return;
     if (!isHost(selectedGroup)) { notifyUser('เฉพาะหัวหน้าห้องเท่านั้นที่มีสิทธิ์ยุบและลบกลุ่มนี้!'); return; }
@@ -1545,13 +1789,13 @@ export default function App() {
       await supabase.from('group_members').delete().eq('group_id', selectedGroup.id);
       await supabase.from('group_messages').delete().eq('group_id', selectedGroup.id);
       const { error } = await supabase.from('study_groups').delete().eq('id', selectedGroup.id);
-      
-      if (!error) { 
-        notifyUser('ยุบและลบห้องติวเรียบร้อยแล้ว!'); 
+
+      if (!error) {
+        notifyUser('ยุบและลบห้องติวเรียบร้อยแล้ว!');
         setShowMemberListModal(false);
-        setSelectedGroup(null); 
-        await fetchGroupsFromSupabase(); 
-        setCurrentTab('home'); 
+        setSelectedGroup(null);
+        await fetchGroupsFromSupabase();
+        setCurrentTab('home');
       } else {
         notifyUser('ลบห้องไม่สำเร็จ: ' + error.message);
       }
@@ -1625,13 +1869,19 @@ export default function App() {
   const handleOpenNotifications = () => { setShowNotificationModal(true); setHasUnreadNotification(false); };
 
   const handleNotificationClick = (n) => {
-    if (n.type === 'join_request' && !n.isHandled) return;
+    if ((n.type === 'join_request' || n.type === 'group_request') && !n.isHandled) return;
     setShowNotificationModal(false);
-    if (n.type === 'dm' && n.targetUser) { handleOpenPrivateChat(n.targetUser); }
-    else if (n.type === 'group' || n.type === 'join_request') {
+    setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, read: true } : item));
+    if (n.type === 'dm' && n.targetUser) {
+      handleOpenPrivateChat(n.targetUser);
+    } else if (n.type === 'friend_request') {
+      setShowQuickFriendModal(true);
+    } else if (n.type === 'group' || n.type === 'join_request') {
       const gToEnter = n.groupObj || studyGroups.find(g => String(g.id) === String(n.groupId));
       if (gToEnter) handleRequestJoinRoom(gToEnter);
-    } else setCurrentTab('my_groups');
+    } else {
+      setCurrentTab('my_groups');
+    }
   };
 
   const handleSaveProfile = () => {
@@ -1885,9 +2135,9 @@ export default function App() {
   };
 
   const handleSaveGroup = async () => {
-    if (!groupTitle.trim() || !customSubject.trim()) { 
-      notifyUser('กรุณากรอกชื่อกลุ่มและวิชาให้ครบถ้วนครับ'); 
-      return; 
+    if (!groupTitle.trim() || !customSubject.trim()) {
+      notifyUser('กรุณากรอกชื่อกลุ่มและวิชาให้ครบถ้วนครับ');
+      return;
     }
 
     // จัดการสถานที่นัดพบ กรณีเลือก "อื่นๆ" (other)
@@ -1901,8 +2151,8 @@ export default function App() {
       finalLocation = trimmedCustom;
     }
 
-    const formattedDateTime = groupDate 
-      ? `${groupDate} | ${groupTime}` 
+    const formattedDateTime = groupDate
+      ? `${groupDate} | ${groupTime}`
       : `เสาร์นี้ | ${groupTime}`;
 
     const computedFormat = finalLocation.includes('Google Meet') || finalLocation.toLowerCase().includes('discord') || finalLocation.includes('ออนไลน์') ? 'online' : 'onsite';
@@ -1912,59 +2162,59 @@ export default function App() {
         notifyUser('ไม่พบกลุ่มติวที่ต้องการแก้ไข');
         return;
       }
-      const updatedGroup = { 
-        title: groupTitle.trim(), 
-        subject: customSubject.trim(), 
-        category: selectedCategory, 
+      const updatedGroup = {
+        title: groupTitle.trim(),
+        subject: customSubject.trim(),
+        category: selectedCategory,
         format: computedFormat,
-        location: finalLocation, 
+        location: finalLocation,
         description: groupDescription,
         date_time: formattedDateTime
       };
       const { error } = await supabase.from('study_groups').update(updatedGroup).eq('id', selectedGroup.id);
       if (!error) {
-        setSelectedGroup(prev => ({ ...prev, ...updatedGroup })); 
+        setSelectedGroup(prev => ({ ...prev, ...updatedGroup }));
         setIsEditingGroup(false);
         setLocationText('อาคาร 11 ชั้น 5 (สำนักหอสมุด SPU)');
         setCustomLocation('');
-        notifyUser('แก้ไขข้อมูลห้องติวสำเร็จ!'); 
-        await fetchGroupsFromSupabase(); 
+        notifyUser('แก้ไขข้อมูลห้องติวสำเร็จ!');
+        await fetchGroupsFromSupabase();
         setCurrentTab('room_chat');
       } else {
         notifyUser('แก้ไขไม่สำเร็จ: ' + error.message);
       }
     } else {
       const newGroupData = {
-        title: groupTitle.trim(), 
-        subject: customSubject.trim(), 
-        category: selectedCategory, 
+        title: groupTitle.trim(),
+        subject: customSubject.trim(),
+        category: selectedCategory,
         format: computedFormat,
-        location: finalLocation, 
+        location: finalLocation,
         description: groupDescription || 'ชวนเพื่อนมาช่วยกันอ่านและแลกเปลี่ยนความรู้ฟรี!',
-        date_time: formattedDateTime, 
-        max_members: Number(maxMembersInput) || 5, 
-        current_members: 1, 
+        date_time: formattedDateTime,
+        max_members: Number(maxMembersInput) || 5,
+        current_members: 1,
         host_name: currentUser.name,
         host_id: user?.id || user?.email || 'guest'
       };
 
       const { data, error } = await supabase.from('study_groups').insert([newGroupData]).select();
-      
+
       if (!error && data?.[0]) {
-        setMyJoinedGroupIds(prev => Array.from(new Set([...prev, data[0].id]))); 
+        setMyJoinedGroupIds(prev => Array.from(new Set([...prev, data[0].id])));
         setSelectedGroup(data[0]);
         setLocationText('อาคาร 11 ชั้น 5 (สำนักหอสมุด SPU)');
         setCustomLocation('');
-        await fetchGroupsFromSupabase(); 
-        notifyUser('🎉 สร้างห้องติวใหม่สำเร็จเรียบร้อยแล้ว!'); 
+        await fetchGroupsFromSupabase();
+        notifyUser('🎉 สร้างห้องติวใหม่สำเร็จเรียบร้อยแล้ว!');
         setCurrentTab('home');
       } else {
         notifyUser('⚠ สร้างห้องไม่สำเร็จเนื่องจาก: ' + (error?.message || 'โปรดตรวจสอบสิทธิ์ RLS ใน Supabase'));
       }
     }
 
-    setGroupTitle(''); 
-    setCustomSubject(''); 
+    setGroupTitle('');
+    setCustomSubject('');
     setGroupDescription('');
     setLocationText('อาคาร 11 ชั้น 5 (สำนักหอสมุด SPU)');
     setCustomLocation('');
@@ -1973,12 +2223,12 @@ export default function App() {
   const handleOpenPrivateChat = (targetUser) => {
     setShowQuickFriendModal(false);
     const cleanName = (targetUser.name || targetUser.display_name || targetUser.email?.split('@')[0] || 'เพื่อน').replace(/\s*\(นักศึกษา SPU\)/g, '');
-    setActivePrivateMember({ 
-      id: targetUser.id, 
-      name: cleanName, 
-      avatar: targetUser.avatar || cartoonAvatars[0].url 
+    setActivePrivateMember({
+      id: targetUser.id,
+      name: cleanName,
+      avatar: targetUser.avatar || cartoonAvatars[0].url
     });
-    
+
     setRecentDMMessages(prev => ({ ...prev, [targetUser.id]: { ...prev[targetUser.id], unread: false } }));
     // Bug 3 fix: mark DM notifications as read when opening the chat
     setNotifications(prev => prev.map(n =>
@@ -2095,9 +2345,8 @@ export default function App() {
       `}</style>
 
       {/* Frame มือถือ พร้อมระบบเปิดไฟปิดไฟ */}
-      <div className={`studybuddy-app-frame max-w-4xl bg-[#F8FAFC] rounded-none sm:rounded-[40px] shadow-2xl border-0 sm:border-[6px] border-slate-800 overflow-hidden flex flex-col relative transition-all duration-300 ${
-        !user && isSparking ? 'ring-4 ring-amber-400 scale-[0.998]' : ''
-      }`}>
+      <div className={`studybuddy-app-frame max-w-4xl bg-[#F8FAFC] rounded-none sm:rounded-[40px] shadow-2xl border-0 sm:border-[6px] border-slate-800 overflow-hidden flex flex-col relative transition-all duration-300 ${!user && isSparking ? 'ring-4 ring-amber-400 scale-[0.998]' : ''
+        }`}>
 
         {!user && authMode === 'login' && (
           <>
@@ -2113,9 +2362,8 @@ export default function App() {
 
               <button
                 onClick={handleToggleLights}
-                className={`p-1.5 rounded-full backdrop-blur-md border border-white/30 text-white shadow-md transition-all flex items-center gap-1 ${
-                  isLightsOff ? 'bg-amber-500/80 hover:bg-amber-500' : 'bg-slate-800/60 hover:bg-slate-800'
-                }`}
+                className={`p-1.5 rounded-full backdrop-blur-md border border-white/30 text-white shadow-md transition-all flex items-center gap-1 ${isLightsOff ? 'bg-amber-500/80 hover:bg-amber-500' : 'bg-slate-800/60 hover:bg-slate-800'
+                  }`}
                 title={isLightsOff ? 'เปิดไฟ' : 'ปิดไฟ (Dark Lounge Mode)'}
               >
                 {isLightsOff ? <Sun className="w-4 h-4 text-amber-100" /> : <Moon className="w-4 h-4 text-slate-200" />}
@@ -2132,9 +2380,8 @@ export default function App() {
                     <button
                       key={tKey}
                       onClick={() => { setSelectedTheme(tKey); setShowColorPicker(false); }}
-                      className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${themePresets[tKey].dotBg} ${
-                        selectedTheme === tKey ? 'border-white ring-2 ring-white/50' : 'border-transparent'
-                      }`}
+                      className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${themePresets[tKey].dotBg} ${selectedTheme === tKey ? 'border-white ring-2 ring-white/50' : 'border-transparent'
+                        }`}
                       title={themePresets[tKey].name}
                     />
                   ))}
@@ -2148,17 +2395,16 @@ export default function App() {
           <div className="pointer-events-none absolute inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[60]" aria-live={actionToast.type === 'error' ? 'assertive' : 'polite'}>
             <div
               role={actionToast.type === 'error' ? 'alert' : 'status'}
-              className={`pointer-events-auto flex items-start gap-2.5 rounded-2xl border p-3 shadow-xl backdrop-blur-md ${
-                actionToast.type === 'success'
-                  ? 'border-emerald-200 bg-emerald-50/95 text-emerald-950'
-                  : actionToast.type === 'error'
-                    ? 'border-rose-200 bg-rose-50/95 text-rose-950'
-                    : 'border-indigo-200 bg-white/95 text-slate-900'
-              }`}
+              className={`pointer-events-auto flex items-start gap-2.5 rounded-2xl border p-3 shadow-xl backdrop-blur-md ${actionToast.type === 'success'
+                ? 'border-emerald-200 bg-emerald-50/95 text-emerald-950'
+                : actionToast.type === 'error'
+                  ? 'border-rose-200 bg-rose-50/95 text-rose-950'
+                  : 'border-indigo-200 bg-white/95 text-slate-900'
+                }`}
             >
               {actionToast.type === 'success' ? <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /> :
-               actionToast.type === 'error' ? <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" /> :
-               <Bell className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />}
+                actionToast.type === 'error' ? <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" /> :
+                  <Bell className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />}
               <p className="max-h-20 flex-1 overflow-y-auto overscroll-contain text-xs leading-relaxed">{actionToast.message}</p>
               <button onClick={dismissActionToast} aria-label="ปิดข้อความแจ้งเตือน" className="-mr-1 -mt-1 rounded-lg p-1 text-slate-500 hover:bg-black/5">
                 <X className="h-4 w-4" />
@@ -2191,7 +2437,7 @@ export default function App() {
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full rounded-3xl p-4 space-y-3 shadow-2xl max-h-[480px] flex flex-col">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <div className="flex items-center gap-1.5"><Bell className="w-4 h-4 text-indigo-600" /><h3 className="font-bold text-xs text-slate-900">การแจ้งเตือนล่าสุด ({notifications.length}/6)</h3></div>
+                <div className="flex items-center gap-1.5"><Bell className="w-4 h-4 text-indigo-600" /><h3 className="font-bold text-xs text-slate-900">การแจ้งเตือนล่าสุด ({notifications.length}/15)</h3></div>
                 <button onClick={() => setShowNotificationModal(false)} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
               </div>
               <div className="flex-1 overflow-y-auto overscroll-contain space-y-2 no-scrollbar text-xs">
@@ -2203,15 +2449,34 @@ export default function App() {
                         <span className="text-[9px] text-slate-400">{n.time}</span>
                       </div>
                       <p className="text-[10px] text-slate-600">{n.desc}</p>
-                      
+
                       {n.type === 'join_request' && !n.isHandled ? (
                         <div className="flex gap-2 pt-1">
                           <button onClick={() => handleApproveMember(n.memberReqId, 'accepted', n.id)} className="flex-1 bg-emerald-600 text-white font-bold py-1.5 rounded-xl text-[10px] flex items-center justify-center gap-1 hover:bg-emerald-700"><Check className="w-3.5 h-3.5" /> ยอมรับ</button>
                           <button onClick={() => handleApproveMember(n.memberReqId, 'rejected', n.id)} className="flex-1 bg-rose-500 text-white font-bold py-1.5 rounded-xl text-[10px] flex items-center justify-center gap-1 hover:bg-rose-600"><X className="w-3.5 h-3.5" /> ไม่ยอมรับ</button>
                         </div>
+                      ) : n.type === 'friend_request' && !n.isHandled ? (
+                        <div className="flex gap-2 pt-1">
+                          <button onClick={() => {
+                            const req = friendRequests.find(r => r.id === n.requestId) || { id: n.requestId, sender_name: n.title };
+                            handleAcceptFriendRequest(req);
+                          }} className="flex-1 bg-indigo-600 text-white font-bold py-1.5 rounded-xl text-[10px] flex items-center justify-center gap-1 hover:bg-indigo-700"><Check className="w-3.5 h-3.5" /> ยอมรับ</button>
+                          <button onClick={() => {
+                            const req = friendRequests.find(r => r.id === n.requestId) || { id: n.requestId, sender_name: n.title };
+                            handleRejectFriendRequest(req);
+                          }} className="flex-1 bg-rose-500 text-white font-bold py-1.5 rounded-xl text-[10px] flex items-center justify-center gap-1 hover:bg-rose-600"><X className="w-3.5 h-3.5" /> ไม่ยอมรับ</button>
+                        </div>
+                      ) : n.type === 'friend_request' && !n.isHandled ? (
+                        <div className="flex gap-2 pt-1">
+                          <button onClick={() => {
+                            const req = friendRequests.find(r => r.id === n.requestId) || { id: n.requestId, sender_name: n.title };
+                            handleAcceptFriendRequest(req);
+                            setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, isHandled: true, read: true, statusText: 'เป็นเพื่อนกันแล้ว' } : item));
+                          }} className="flex-1 bg-indigo-600 text-white font-bold py-1.5 rounded-xl text-[10px] flex items-center justify-center gap-1 hover:bg-indigo-700"><Check className="w-3.5 h-3.5" /> รับเป็นเพื่อน</button>
+                        </div>
                       ) : n.statusText && (
                         <div className="pt-1 text-right">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${n.statusText === 'อนุมัติแล้ว' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${n.statusText.includes('อนุมัติ') || n.statusText.includes('เพื่อน') ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
                             {n.statusText}
                           </span>
                         </div>
@@ -2298,21 +2563,43 @@ export default function App() {
                 {friendSearchTerm.trim() !== '' ? (
                   searchedFriends.map((u) => {
                     const isAccepted = acceptedFriends.some(f => f.id === u.id);
+                    const pendingReceivedReq = friendRequests.find(r => r.sender_id === u.id);
                     const isPendingSent = sentFriendRequests.some(r => r.receiver_id === u.id);
                     return (
                       <div key={u.id} className="bg-white p-2.5 rounded-2xl border border-slate-100 flex items-center justify-between">
                         <div className="flex items-center gap-2.5"><img src={u.avatar} className="w-8 h-8 rounded-full object-cover border border-slate-200 bg-indigo-50" /><div><h4 className="font-bold text-xs text-slate-900">{u.name}</h4><p className="text-[9px] text-slate-400">{u.faculty}</p></div></div>
-                        {isAccepted ? <button onClick={() => handleOpenPrivateChat(u)} className="bg-[#4338CA] text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1"><MessageCircle className="w-3 h-3" /> ทักแชต</button> :
-                         isPendingSent ? <span className="bg-amber-50 text-amber-600 text-[9px] font-bold px-2.5 py-1.5 rounded-lg border border-amber-200">รอตอบรับ</span> :
-                         <button onClick={() => handleSendFriendRequest(u)} className="bg-indigo-50 text-indigo-600 text-[9px] font-bold px-2.5 py-1.5 rounded-lg border border-indigo-200 flex items-center gap-1"><UserPlus className="w-3 h-3" /> แอดเพื่อน</button>}
+                        {isAccepted ? (
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={() => handleOpenPrivateChat(u)} className="bg-[#4338CA] text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 hover:bg-indigo-700"><MessageCircle className="w-3 h-3" /> ทักแชต</button>
+                            <button onClick={() => handleUnfriend(u.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200 transition" title="ลบเพื่อน"><Trash2 className="w-3 h-3" /></button>
+                          </div>
+                        ) : pendingReceivedReq ? (
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={() => handleAcceptFriendRequest(pendingReceivedReq)} className="bg-emerald-600 text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 hover:bg-emerald-700 shadow-xs"><Check className="w-3 h-3" /> ยอมรับ</button>
+                            <button onClick={() => handleRejectFriendRequest(pendingReceivedReq)} className="bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 text-[9px] font-bold px-2 py-1.5 rounded-lg border border-slate-200 transition" title="ปฏิเสธ"><X className="w-3 h-3" /></button>
+                          </div>
+                        ) : isPendingSent ? (
+                          <div className="flex items-center gap-1">
+                            <span className="bg-amber-50 text-amber-600 text-[9px] font-bold px-2.5 py-1.5 rounded-lg border border-amber-200">รอตอบรับ</span>
+                            <button onClick={() => handleCancelFriendRequest(u.id)} className="bg-slate-100 hover:bg-rose-50 text-slate-400 hover:text-rose-600 text-[9px] font-bold px-2 py-1.5 rounded-lg border border-slate-200 transition" title="ยกเลิกคำขอ"><X className="w-3 h-3" /></button>
+                          </div>
+                        ) : (
+                          <button onClick={() => handleSendFriendRequest(u)} className="bg-indigo-50 text-indigo-600 text-[9px] font-bold px-2.5 py-1.5 rounded-lg border border-indigo-200 flex items-center gap-1 hover:bg-indigo-100"><UserPlus className="w-3 h-3" /> แอดเพื่อน</button>
+                        )}
                       </div>
                     );
                   })
                 ) : (
                   acceptedFriends.map((f) => (
-                    <div key={f.id} onClick={() => handleOpenPrivateChat({ id: f.id, name: f.display_name || f.email.split('@')[0], avatar: f.avatar })} className="bg-slate-50 border border-slate-100 p-2.5 rounded-2xl flex items-center justify-between cursor-pointer">
-                      <div className="flex items-center gap-2.5"><img src={f.avatar || cartoonAvatars[0].url} className="w-8 h-8 rounded-full object-cover border border-slate-200 bg-indigo-50" /><div><h4 className="font-bold text-xs text-slate-900">{(f.display_name || f.email.split('@')[0]).replace(/\s*\(นักศึกษา SPU\)/g, '')}</h4><p className="text-[9px] text-emerald-600 font-bold">● พร้อมแชต</p></div></div>
-                      <span className="text-indigo-600 text-[10px] font-bold flex items-center gap-1"><MessageCircle className="w-3.5 h-3.5" /> ทักแชต</span>
+                    <div key={f.id} className="bg-slate-50 border border-slate-100 p-2.5 rounded-2xl flex items-center justify-between">
+                      <div onClick={() => handleOpenPrivateChat({ id: f.id, name: f.display_name || f.email.split('@')[0], avatar: f.avatar })} className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0 pr-2">
+                        <img src={f.avatar || cartoonAvatars[0].url} className="w-8 h-8 rounded-full object-cover border border-slate-200 bg-indigo-50" />
+                        <div className="truncate"><h4 className="font-bold text-xs text-slate-900 truncate">{(f.display_name || f.email.split('@')[0]).replace(/\s*\(นักศึกษา SPU\)/g, '')}</h4><p className="text-[9px] text-emerald-600 font-bold">● พร้อมแชต</p></div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button onClick={() => handleOpenPrivateChat({ id: f.id, name: f.display_name || f.email.split('@')[0], avatar: f.avatar })} className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1"><MessageCircle className="w-3.5 h-3.5" /> ทักแชต</button>
+                        <button onClick={() => handleUnfriend(f.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200 transition" title="ลบเพื่อน"><Trash2 className="w-3.5 h-3.5" /></button>
+                      </div>
                     </div>
                   ))
                 )}
@@ -2323,20 +2610,19 @@ export default function App() {
 
         {/* AUTH SCREEN */}
         {!user ? (
-          <div 
+          <div
             onMouseMove={handleMouseMove}
             onMouseLeave={() => {
               mouseTrackingRef.current.active = false;
               if (customCursorRef.current) customCursorRef.current.style.opacity = '0';
             }}
-            className={`flex-1 min-h-0 flex flex-col overflow-y-auto overscroll-contain no-scrollbar relative transition-colors duration-500 cursor-none ${
-              isLightsOff 
-                ? `bg-gradient-to-b ${currentThemeObj.bg}`
-                : 'bg-[#F8FAFC]'
-            }`}
+            className={`flex-1 min-h-0 flex flex-col overflow-y-auto overscroll-contain no-scrollbar relative transition-colors duration-500 cursor-none ${isLightsOff
+              ? `bg-gradient-to-b ${currentThemeObj.bg}`
+              : 'bg-[#F8FAFC]'
+              }`}
           >
-            <canvas 
-              ref={rainCanvasRef} 
+            <canvas
+              ref={rainCanvasRef}
               className="absolute inset-0 pointer-events-none z-0 opacity-80"
             />
 
@@ -2361,11 +2647,10 @@ export default function App() {
               />
             </div>
 
-            <div className={`pt-10 pb-8 px-6 text-white text-center relative overflow-hidden rounded-b-[36px] shadow-lg shrink-0 transition-all duration-500 z-10 ${
-              isLightsOff 
-                ? 'bg-slate-900/40 backdrop-blur-md border-b border-white/10' 
-                : 'bg-gradient-to-br from-indigo-700 via-indigo-600 to-slate-900'
-            }`}>
+            <div className={`pt-10 pb-8 px-6 text-white text-center relative overflow-hidden rounded-b-[36px] shadow-lg shrink-0 transition-all duration-500 z-10 ${isLightsOff
+              ? 'bg-slate-900/40 backdrop-blur-md border-b border-white/10'
+              : 'bg-gradient-to-br from-indigo-700 via-indigo-600 to-slate-900'
+              }`}>
               <div className="absolute top-4 left-4 z-20 flex flex-col items-start select-none pointer-events-none">
                 <div className="relative inline-block">
                   <span className="text-2xl font-black tracking-tight text-white leading-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)] font-sans">
@@ -2379,9 +2664,8 @@ export default function App() {
               <div className="absolute bottom-0 left-4 w-20 h-20 bg-indigo-400/20 rounded-full blur-lg pointer-events-none" />
 
               <div className="relative z-10 flex flex-col items-center">
-                <div className={`w-14 h-14 backdrop-blur-md rounded-2xl border border-white/20 flex items-center justify-center mb-3 shadow-inner ${
-                  isLightsOff ? 'bg-white/5 ring-2 ring-white/10' : 'bg-white/10'
-                }`}>
+                <div className={`w-14 h-14 backdrop-blur-md rounded-2xl border border-white/20 flex items-center justify-center mb-3 shadow-inner ${isLightsOff ? 'bg-white/5 ring-2 ring-white/10' : 'bg-white/10'
+                  }`}>
                   <BookOpen className="w-7 h-7 text-white" />
                 </div>
                 <div className="flex items-center gap-1.5 justify-center mb-1">
@@ -2401,32 +2685,29 @@ export default function App() {
 
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pt-6 pb-32 flex flex-col z-10 relative">
               <div className="mx-auto my-auto w-full max-w-md">
-                <div className={`p-1 rounded-2xl flex gap-1 mb-4 transition-all ${
-                  isLightsOff ? 'bg-slate-800/80 border border-slate-700 backdrop-blur-md' : 'bg-slate-200/80'
-                }`}>
+                <div className={`p-1 rounded-2xl flex gap-1 mb-4 transition-all ${isLightsOff ? 'bg-slate-800/80 border border-slate-700 backdrop-blur-md' : 'bg-slate-200/80'
+                  }`}>
                   <button
                     type="button"
                     onClick={() => setAuthMode('login')}
-                    className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${
-                      authMode === 'login'
-                        ? isLightsOff 
-                          ? `${currentThemeObj.primaryBtn} text-white shadow-lg` 
-                          : 'bg-white text-indigo-900 shadow-xs'
-                        : isLightsOff ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
-                    }`}
+                    className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${authMode === 'login'
+                      ? isLightsOff
+                        ? `${currentThemeObj.primaryBtn} text-white shadow-lg`
+                        : 'bg-white text-indigo-900 shadow-xs'
+                      : isLightsOff ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
+                      }`}
                   >
                     เข้าสู่ระบบ
                   </button>
                   <button
                     type="button"
                     onClick={() => setAuthMode('register')}
-                    className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${
-                      authMode === 'register'
-                        ? isLightsOff 
-                          ? `${currentThemeObj.primaryBtn} text-white shadow-lg` 
-                          : 'bg-white text-indigo-900 shadow-xs'
-                        : isLightsOff ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
-                    }`}
+                    className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${authMode === 'register'
+                      ? isLightsOff
+                        ? `${currentThemeObj.primaryBtn} text-white shadow-lg`
+                        : 'bg-white text-indigo-900 shadow-xs'
+                      : isLightsOff ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
+                      }`}
                   >
                     สมัครสมาชิก
                   </button>
@@ -2438,11 +2719,10 @@ export default function App() {
                       <label className={`text-xs font-bold block mb-1.5 ${isLightsOff ? 'text-slate-300' : 'text-slate-600'}`}>
                         ชื่อแสดงผล / Display Name
                       </label>
-                      <div className={`flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all ${
-                        isLightsOff 
-                          ? 'bg-slate-900/70 border-slate-700 text-white focus-within:border-indigo-400 backdrop-blur-md' 
-                          : 'bg-white/90 border-slate-200 text-slate-800 focus-within:border-indigo-500 backdrop-blur-md'
-                      }`}>
+                      <div className={`flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all ${isLightsOff
+                        ? 'bg-slate-900/70 border-slate-700 text-white focus-within:border-indigo-400 backdrop-blur-md'
+                        : 'bg-white/90 border-slate-200 text-slate-800 focus-within:border-indigo-500 backdrop-blur-md'
+                        }`}>
                         <User className="w-4 h-4 text-slate-400 shrink-0" />
                         <input
                           type="text"
@@ -2459,11 +2739,10 @@ export default function App() {
                     <label className={`text-xs font-bold block mb-1.5 ${isLightsOff ? 'text-slate-300' : 'text-slate-600'}`}>
                       อีเมล / Email
                     </label>
-                    <div className={`flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all ${
-                      isLightsOff 
-                        ? 'bg-slate-900/70 border-slate-700 text-white focus-within:border-indigo-400 backdrop-blur-md' 
-                        : 'bg-white/90 border-slate-200 text-slate-800 focus-within:border-indigo-500 backdrop-blur-md'
-                    }`}>
+                    <div className={`flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all ${isLightsOff
+                      ? 'bg-slate-900/70 border-slate-700 text-white focus-within:border-indigo-400 backdrop-blur-md'
+                      : 'bg-white/90 border-slate-200 text-slate-800 focus-within:border-indigo-500 backdrop-blur-md'
+                      }`}>
                       <Mail className="w-4 h-4 text-slate-400 shrink-0" />
                       <input
                         type="email"
@@ -2481,11 +2760,10 @@ export default function App() {
                     <label className={`text-xs font-bold block mb-1.5 ${isLightsOff ? 'text-slate-300' : 'text-slate-600'}`}>
                       รหัสผ่าน / Password
                     </label>
-                    <div className={`flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all ${
-                      isLightsOff 
-                        ? 'bg-slate-900/70 border-slate-700 text-white focus-within:border-indigo-400 backdrop-blur-md' 
-                        : 'bg-white/90 border-slate-200 text-slate-800 focus-within:border-indigo-500 backdrop-blur-md'
-                    }`}>
+                    <div className={`flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all ${isLightsOff
+                      ? 'bg-slate-900/70 border-slate-700 text-white focus-within:border-indigo-400 backdrop-blur-md'
+                      : 'bg-white/90 border-slate-200 text-slate-800 focus-within:border-indigo-500 backdrop-blur-md'
+                      }`}>
                       <Lock className="w-4 h-4 text-slate-400 shrink-0" />
                       <input
                         type="password"
@@ -2502,11 +2780,10 @@ export default function App() {
                   <button
                     type="submit"
                     disabled={authLoading}
-                    className={`w-full text-white font-bold py-3.5 rounded-2xl text-sm shadow-md transition-all flex items-center justify-center gap-1.5 mt-4 disabled:opacity-70 cursor-none ${
-                      isLightsOff 
-                        ? currentThemeObj.primaryBtn 
-                        : 'bg-[#4338CA] hover:bg-indigo-700 shadow-indigo-600/20'
-                    }`}
+                    className={`w-full text-white font-bold py-3.5 rounded-2xl text-sm shadow-md transition-all flex items-center justify-center gap-1.5 mt-4 disabled:opacity-70 cursor-none ${isLightsOff
+                      ? currentThemeObj.primaryBtn
+                      : 'bg-[#4338CA] hover:bg-indigo-700 shadow-indigo-600/20'
+                      }`}
                   >
                     {authLoading ? (
                       'กำลังดำเนินการ...'
@@ -2537,11 +2814,10 @@ export default function App() {
                   onClick={handleGoogleAuth}
                   disabled={authLoading}
                   aria-label={authMode === 'login' ? 'เข้าสู่ระบบด้วย Google' : 'สมัครสมาชิกด้วย Google'}
-                  className={`w-full flex items-center justify-center gap-2.5 rounded-2xl border py-3.5 text-sm font-bold transition-colors disabled:opacity-60 cursor-none ${
-                    isLightsOff
-                      ? 'border-slate-700 bg-slate-900/70 text-white hover:bg-slate-800'
-                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                  }`}
+                  className={`w-full flex items-center justify-center gap-2.5 rounded-2xl border py-3.5 text-sm font-bold transition-colors disabled:opacity-60 cursor-none ${isLightsOff
+                    ? 'border-slate-700 bg-slate-900/70 text-white hover:bg-slate-800'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
                 >
                   <svg aria-hidden="true" viewBox="0 0 48 48" className="h-5 w-5">
                     <path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.8 6.1-15Z" />
@@ -2560,9 +2836,8 @@ export default function App() {
                       ยังไม่มีบัญชีใช่ไหม?{' '}
                       <span
                         onClick={() => setAuthMode('register')}
-                        className={`font-bold cursor-pointer hover:underline ${
-                          isLightsOff ? currentThemeObj.accentText : 'text-indigo-600'
-                        }`}
+                        className={`font-bold cursor-pointer hover:underline ${isLightsOff ? currentThemeObj.accentText : 'text-indigo-600'
+                          }`}
                       >
                         สมัครสมาชิกใหม่
                       </span>
@@ -2572,9 +2847,8 @@ export default function App() {
                       มีบัญชีอยู่แล้ว?{' '}
                       <span
                         onClick={() => setAuthMode('login')}
-                        className={`font-bold cursor-pointer hover:underline ${
-                          isLightsOff ? currentThemeObj.accentText : 'text-indigo-600'
-                        }`}
+                        className={`font-bold cursor-pointer hover:underline ${isLightsOff ? currentThemeObj.accentText : 'text-indigo-600'
+                          }`}
                       >
                         เข้าสู่ระบบ
                       </span>
@@ -2724,13 +2998,29 @@ export default function App() {
                     <span className="text-[10px] font-bold text-indigo-700 block">{isSearchingRealtime ? 'กำลังค้นหาเพื่อน...' : '👤 เพื่อนที่พบ:'}</span>
                     {searchedFriends.map((u) => {
                       const isAccepted = acceptedFriends.some(f => f.id === u.id);
+                      const pendingReceivedReq = friendRequests.find(r => r.sender_id === u.id);
                       const isPendingSent = sentFriendRequests.some(r => r.receiver_id === u.id);
                       return (
                         <div key={u.id} className="bg-white p-2.5 rounded-2xl border border-slate-100 flex items-center justify-between">
                           <div className="flex items-center gap-2.5"><img src={u.avatar} className="w-8 h-8 rounded-full object-cover border border-slate-200 bg-indigo-50" /><div><h4 className="font-bold text-xs text-slate-900">{u.name}</h4><p className="text-[9px] text-slate-400">{u.faculty}</p></div></div>
-                          {isAccepted ? <button onClick={() => handleOpenPrivateChat(u)} className="bg-[#4338CA] text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1"><MessageCircle className="w-3 h-3" /> ทักแชต</button> :
-                           isPendingSent ? <span className="bg-amber-50 text-amber-600 text-[9px] font-bold px-2.5 py-1.5 rounded-lg border border-amber-200">รอตอบรับ</span> :
-                           <button onClick={() => handleSendFriendRequest(u)} className="bg-indigo-50 text-indigo-600 text-[9px] font-bold px-2.5 py-1.5 rounded-lg border border-indigo-200 flex items-center gap-1"><UserPlus className="w-3 h-3" /> แอดเพื่อน</button>}
+                          {isAccepted ? (
+                            <div className="flex items-center gap-1.5">
+                              <button onClick={() => handleOpenPrivateChat(u)} className="bg-[#4338CA] text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 hover:bg-indigo-700"><MessageCircle className="w-3 h-3" /> ทักแชต</button>
+                              <button onClick={() => handleUnfriend(u.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200 transition" title="ลบเพื่อน"><Trash2 className="w-3 h-3" /></button>
+                            </div>
+                          ) : pendingReceivedReq ? (
+                            <div className="flex items-center gap-1.5">
+                              <button onClick={() => handleAcceptFriendRequest(pendingReceivedReq)} className="bg-emerald-600 text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 hover:bg-emerald-700 shadow-xs"><Check className="w-3 h-3" /> ยอมรับ</button>
+                              <button onClick={() => handleRejectFriendRequest(pendingReceivedReq)} className="bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 text-[9px] font-bold px-2 py-1.5 rounded-lg border border-slate-200 transition" title="ปฏิเสธ"><X className="w-3 h-3" /></button>
+                            </div>
+                          ) : isPendingSent ? (
+                            <div className="flex items-center gap-1">
+                              <span className="bg-amber-50 text-amber-600 text-[9px] font-bold px-2.5 py-1.5 rounded-lg border border-amber-200">รอตอบรับ</span>
+                              <button onClick={() => handleCancelFriendRequest(u.id)} className="bg-slate-100 hover:bg-rose-50 text-slate-400 hover:text-rose-600 text-[9px] font-bold px-2 py-1.5 rounded-lg border border-slate-200 transition" title="ยกเลิกคำขอ"><X className="w-3 h-3" /></button>
+                            </div>
+                          ) : (
+                            <button onClick={() => handleSendFriendRequest(u)} className="bg-indigo-50 text-indigo-600 text-[9px] font-bold px-2.5 py-1.5 rounded-lg border border-indigo-200 flex items-center gap-1 hover:bg-indigo-100"><UserPlus className="w-3 h-3" /> แอดเพื่อน</button>
+                          )}
                         </div>
                       );
                     })}
@@ -2947,17 +3237,18 @@ export default function App() {
             {currentTab === 'private_chat' && activePrivateMember && (
               <div className="flex-1 flex flex-col bg-[#F8FAFC] relative overflow-hidden pb-[60px]">
                 <div className="bg-white px-4 pt-5 pb-3 border-b border-slate-200 shrink-0 flex items-center justify-between shadow-xs">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <button onClick={() => setCurrentTab('my_groups')} className="p-1.5 rounded-full hover:bg-slate-100 text-slate-700"><ArrowLeft className="w-5 h-5" /></button>
                     <div className="relative">
                       <img src={activePrivateMember.avatar || cartoonAvatars[0].url} alt={activePrivateMember.name} className="w-10 h-10 rounded-full object-cover border border-slate-200 bg-indigo-50" />
                       <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white"></span>
                     </div>
-                    <div>
-                      <h2 className="font-bold text-slate-900 text-xs leading-tight">{activePrivateMember.name}</h2>
-                      <span className="text-[9px] text-emerald-600 font-bold flex items-center gap-1">● กำลังใช้งาน</span>
+                    <div className="min-w-0">
+                      <h2 className="font-bold text-slate-900 text-xs leading-tight truncate">{activePrivateMember.name}</h2>
+                      <span className="text-[9px] text-emerald-600 font-bold flex items-center gap-1">● ออนไลน์</span>
                     </div>
                   </div>
+                  <button onClick={() => handleUnfriend(activePrivateMember.id)} className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1.5 rounded-lg hover:bg-rose-100 shrink-0 ml-2">ลบเพื่อน</button>
                 </div>
 
                 <div ref={privateChatContainerRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3 text-xs no-scrollbar">
@@ -3010,7 +3301,10 @@ export default function App() {
                     {friendRequests.map(req => (
                       <div key={req.id} className="bg-white p-2 rounded-xl flex items-center justify-between border border-indigo-100">
                         <span className="text-xs font-bold text-slate-800">{req.sender_name}</span>
-                        <button onClick={() => handleAcceptFriendRequest(req)} className="bg-indigo-600 text-white text-[10px] font-bold px-3 py-1 rounded-lg flex items-center gap-1"><Check className="w-3 h-3" /> ยอมรับ</button>
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={() => handleAcceptFriendRequest(req)} className="bg-indigo-600 text-white text-[10px] font-bold px-3 py-1 rounded-lg flex items-center gap-1 hover:bg-indigo-700 shadow-xs"><Check className="w-3 h-3" /> ยอมรับ</button>
+                          <button onClick={() => handleRejectFriendRequest(req)} className="bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 text-[10px] font-bold px-2 py-1 rounded-lg border border-slate-200 transition flex items-center gap-1"><X className="w-3 h-3" /> ปฏิเสธ</button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -3061,8 +3355,8 @@ export default function App() {
 
                   <span className="text-[11px] font-bold text-slate-400 block uppercase pt-2">💬 แชตส่วนตัวกับเพื่อน</span>
                   {sortedAcceptedFriends.map((usr) => {
-                    const fName = (usr.display_name || usr.email.split('@')[0]).replace(/\s*\(นักศึกษา SPU\)/g, ''); 
-                    const dmPreview = recentDMMessages[usr.id]; 
+                    const fName = (usr.display_name || usr.email.split('@')[0]).replace(/\s*\(นักศึกษา SPU\)/g, '');
+                    const dmPreview = recentDMMessages[usr.id];
                     const isUnread = dmPreview?.unread;
                     return (
                       <div key={`friend-${usr.id}`} onClick={() => handleOpenPrivateChat({ id: usr.id, name: fName, avatar: usr.avatar })} className={`bg-white border rounded-2xl p-3.5 shadow-xs cursor-pointer flex items-center justify-between ${isUnread ? 'border-indigo-500 bg-indigo-50/20' : 'border-slate-200'}`}>
@@ -3079,14 +3373,26 @@ export default function App() {
                             <p className={`text-[11px] truncate ${isUnread ? 'font-bold text-indigo-900' : 'text-slate-500'}`}>{dmPreview?.text || 'คลิกเพื่อเปิดหน้าต่างแชตส่วนตัว'}</p>
                           </div>
                         </div>
-                        {isUnread ? (
-                          <div className="flex items-center gap-1">
-                            <span className="text-[9px] font-bold text-rose-500">ข้อความใหม่</span>
-                            <span className="w-3.5 h-3.5 bg-rose-500 rounded-full border-2 border-white shrink-0 animate-pulse"></span>
-                          </div>
-                        ) : (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isUnread && (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] font-bold text-rose-500">ข้อความใหม่</span>
+                              <span className="w-3.5 h-3.5 bg-rose-500 rounded-full border-2 border-white shrink-0 animate-pulse"></span>
+                            </div>
+                          )}
                           <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>
-                        )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUnfriend(usr.id);
+                            }}
+                            className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition"
+                            title="ลบเพื่อน"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -3224,8 +3530,8 @@ export default function App() {
                   </button>
                   <h2 className="text-lg font-bold text-slate-900">แผนที่จุดนัดพบ SPU Hub</h2>
                 </div>
-                  <p className="px-1 text-[10px] text-slate-500">เลื่อนล้อเมาส์เพื่อดูรายละเอียดด้านล่าง · เลื่อนสุดแล้วล้อเมาส์จะซูมแผนที่</p>
-                  <div className="bg-white border border-slate-200 rounded-3xl p-3 space-y-3 shadow-xs">
+                <p className="px-1 text-[10px] text-slate-500">เลื่อนล้อเมาส์เพื่อดูรายละเอียดด้านล่าง · เลื่อนสุดแล้วล้อเมาส์จะซูมแผนที่</p>
+                <div className="bg-white border border-slate-200 rounded-3xl p-3 space-y-3 shadow-xs">
                   {/* ซ่อนกล่องล่าง Overlay ของ Campus Floor Explorer */}
                   <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 h-[min(80dvh,720px)] min-h-[480px] relative">
                     <button
