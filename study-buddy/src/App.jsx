@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import {
   Search, Plus, Compass, User, MapPin, Calendar, ArrowRight,
