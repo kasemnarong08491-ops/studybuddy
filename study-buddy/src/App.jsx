@@ -4,7 +4,7 @@ import {
   Search, Plus, Compass, User, MapPin, Calendar, ArrowRight,
   ArrowLeft, Send, Map, LogIn, LogOut, Users, Mail, Lock,
   MessageCircle, X, CheckCircle, Bell, Edit, Trash2, Clock,
-  UserPlus, Check, ShieldAlert, Paperclip, LogOut as LeaveIcon,
+  UserPlus, UserMinus, Check, ShieldAlert, Paperclip, LogOut as LeaveIcon,
   BookOpen, Sparkles, GraduationCap, ChevronRight, Zap, Sun, Moon, Palette, Camera
 } from 'lucide-react';
 
@@ -764,17 +764,17 @@ export default function App() {
       return;
     }
 
-    const groupById = new Map([...(hostedGroups || []), ...(groups || [])].map(group => [String(group.id), group]));
+    const groupById = new window.Map([...(hostedGroups || []), ...(groups || [])].map(group => [String(group.id), group]));
     const hostedPending = pendingMembers.filter(member => hostedGroupIds.has(String(member.group_id)));
 
     const pendingUserIds = [...new Set(hostedPending.map(member => member.user_id).filter(Boolean))];
-    let profileById = new Map();
+    let profileById = new window.Map();
     if (pendingUserIds.length) {
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id,display_name,avatar')
         .in('id', pendingUserIds);
-      if (profiles) profileById = new Map(profiles.map(profile => [String(profile.id), profile]));
+      if (profiles) profileById = new window.Map(profiles.map(profile => [String(profile.id), profile]));
     }
 
     const validPending = hostedPending.map(member => {
@@ -1012,11 +1012,11 @@ export default function App() {
       .select('*')
       .in('id', partnerIds);
 
-    const profileById = new Map((profiles || []).map(p => [String(p.id), p]));
+    const profileById = new window.Map((profiles || []).map(p => [String(p.id), p]));
     const partners = partnerIds.map(id => profileById.get(String(id)) || { id });
     setAcceptedFriends(partners);
 
-    const latestByPartner = new Map();
+    const latestByPartner = new window.Map();
     (dmRows || []).forEach(m => {
       const otherId = String(m.sender_id) === String(user.id) ? m.receiver_id : m.sender_id;
       const key = String(otherId);
@@ -1449,21 +1449,25 @@ export default function App() {
     }
   };
 
-  const handleRejectFriendRequest = async (request) => {
-    if (request?.id == null) return;
-    const { error } = await supabase.from('friend_requests').update({ status: 'rejected' }).eq('id', request.id);
+  const handleRejectFriendRequest = async (requestOrId) => {
+    const requestId = typeof requestOrId === 'object' && requestOrId !== null ? requestOrId.id : requestOrId;
+    if (requestId == null) return;
+    const { error } = await supabase.from('friend_requests').delete().eq('id', requestId);
     if (!error) {
-      notifyUser(`ปฏิเสธคำขอจาก ${request.sender_name || 'เพื่อน'} เรียบร้อยแล้ว`);
-      setFriendRequests(prev => prev.filter(r => r.id !== request.id));
-      setNotifications(prev => prev.map(n => {
-        if (n.type === 'friend_request' && (n.requestId === request.id || n.senderKey === `friend-req-${request.id}`)) {
-          return { ...n, isHandled: true, read: true, statusText: 'ปฏิเสธแล้ว' };
-        }
-        return n;
-      }));
+      notifyUser('ปฏิเสธคำขอเป็นเพื่อนแล้ว');
+      setFriendRequests(prev => prev.filter(r => String(r.id) !== String(requestId)));
+      setNotifications(prev => prev.filter(n => !(n.type === 'friend_request' && (String(n.requestId) === String(requestId) || n.senderKey === `friend-req-${requestId}`))));
       fetchFriendStatus();
     } else {
-      notifyUser('ทำรายการไม่สำเร็จ: ' + error.message);
+      const { error: updateError } = await supabase.from('friend_requests').update({ status: 'rejected' }).eq('id', requestId);
+      if (!updateError) {
+        notifyUser('ปฏิเสธคำขอเป็นเพื่อนแล้ว');
+        setFriendRequests(prev => prev.filter(r => String(r.id) !== String(requestId)));
+        setNotifications(prev => prev.filter(n => !(n.type === 'friend_request' && (String(n.requestId) === String(requestId) || n.senderKey === `friend-req-${requestId}`))));
+        fetchFriendStatus();
+      } else {
+        notifyUser('ทำรายการไม่สำเร็จ: ' + error.message);
+      }
     }
   };
 
@@ -1494,7 +1498,7 @@ export default function App() {
 
   const handleUnfriend = async (friendUserId) => {
     if (!user?.id || !friendUserId) return;
-    if (!window.confirm('ต้องการลบเพื่อนคนนี้ใช่หรือไม่?')) return;
+    if (!window.confirm('ต้องการลบเพื่อนคนนี้ออกจากรายชื่อเพื่อนใช่ไหม?')) return;
     const { error } = await supabase
       .from('friend_requests')
       .delete()
@@ -1505,7 +1509,7 @@ export default function App() {
         .update({ status: 'unfriended' })
         .or(`and(sender_id.eq.${user.id},receiver_id.eq.${friendUserId}),and(sender_id.eq.${friendUserId},receiver_id.eq.${user.id})`);
       if (updateErr) {
-        showToast(`unfriend-err-${friendUserId}`, 'เกิดข้อผิดพลาด', 'ไม่สามารถลบเพื่อนได้: ' + error.message);
+        notifyUser('ไม่สามารถลบเพื่อนได้: ' + error.message, 'error');
         return;
       }
     }
@@ -1522,7 +1526,7 @@ export default function App() {
       setActivePrivateMember(null);
       setCurrentTab('my_groups');
     }
-    showToast(`unfriend-${friendUserId}`, 'ลบเพื่อนเรียบร้อยแล้ว', '');
+    notifyUser('ลบเพื่อนเรียบร้อยแล้ว');
     fetchFriendStatus();
   };
 
@@ -2457,22 +2461,26 @@ export default function App() {
                         </div>
                       ) : n.type === 'friend_request' && !n.isHandled ? (
                         <div className="flex gap-2 pt-1">
-                          <button onClick={() => {
-                            const req = friendRequests.find(r => r.id === n.requestId) || { id: n.requestId, sender_name: n.title };
-                            handleAcceptFriendRequest(req);
-                          }} className="flex-1 bg-indigo-600 text-white font-bold py-1.5 rounded-xl text-[10px] flex items-center justify-center gap-1 hover:bg-indigo-700"><Check className="w-3.5 h-3.5" /> ยอมรับ</button>
-                          <button onClick={() => {
-                            const req = friendRequests.find(r => r.id === n.requestId) || { id: n.requestId, sender_name: n.title };
-                            handleRejectFriendRequest(req);
-                          }} className="flex-1 bg-rose-500 text-white font-bold py-1.5 rounded-xl text-[10px] flex items-center justify-center gap-1 hover:bg-rose-600"><X className="w-3.5 h-3.5" /> ไม่ยอมรับ</button>
-                        </div>
-                      ) : n.type === 'friend_request' && !n.isHandled ? (
-                        <div className="flex gap-2 pt-1">
-                          <button onClick={() => {
-                            const req = friendRequests.find(r => r.id === n.requestId) || { id: n.requestId, sender_name: n.title };
-                            handleAcceptFriendRequest(req);
-                            setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, isHandled: true, read: true, statusText: 'เป็นเพื่อนกันแล้ว' } : item));
-                          }} className="flex-1 bg-indigo-600 text-white font-bold py-1.5 rounded-xl text-[10px] flex items-center justify-center gap-1 hover:bg-indigo-700"><Check className="w-3.5 h-3.5" /> รับเป็นเพื่อน</button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const req = friendRequests.find(r => r.id === n.requestId) || { id: n.requestId, sender_name: n.title };
+                              handleRejectFriendRequest(req.id);
+                            }}
+                            className="flex-1 border border-slate-200 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 font-bold py-1.5 rounded-xl text-[10px] flex items-center justify-center gap-1 transition"
+                          >
+                            <X className="w-3.5 h-3.5" /> ปฏิเสธ
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const req = friendRequests.find(r => r.id === n.requestId) || { id: n.requestId, sender_name: n.title };
+                              handleAcceptFriendRequest(req);
+                            }}
+                            className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 rounded-xl text-[10px] flex items-center justify-center gap-1 shadow-xs transition"
+                          >
+                            <Check className="w-3.5 h-3.5" /> ยอมรับ
+                          </button>
                         </div>
                       ) : n.statusText && (
                         <div className="pt-1 text-right">
@@ -2571,7 +2579,7 @@ export default function App() {
                         {isAccepted ? (
                           <div className="flex items-center gap-1.5">
                             <button onClick={() => handleOpenPrivateChat(u)} className="bg-[#4338CA] text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 hover:bg-indigo-700"><MessageCircle className="w-3 h-3" /> ทักแชต</button>
-                            <button onClick={() => handleUnfriend(u.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200 transition" title="ลบเพื่อน"><Trash2 className="w-3 h-3" /></button>
+                            <button onClick={() => handleUnfriend(u.id)} className="flex items-center gap-0.5 text-[9px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-1.5 rounded-lg transition" title="ลบเพื่อน"><UserMinus className="w-3 h-3" /> ลบเพื่อน</button>
                           </div>
                         ) : pendingReceivedReq ? (
                           <div className="flex items-center gap-1.5">
@@ -2598,7 +2606,7 @@ export default function App() {
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button onClick={() => handleOpenPrivateChat({ id: f.id, name: f.display_name || f.email.split('@')[0], avatar: f.avatar })} className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1"><MessageCircle className="w-3.5 h-3.5" /> ทักแชต</button>
-                        <button onClick={() => handleUnfriend(f.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200 transition" title="ลบเพื่อน"><Trash2 className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleUnfriend(f.id)} className="flex items-center gap-0.5 text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-1.5 rounded-lg transition" title="ลบเพื่อน"><UserMinus className="w-3.5 h-3.5" /> ลบเพื่อน</button>
                       </div>
                     </div>
                   ))
@@ -3006,12 +3014,12 @@ export default function App() {
                           {isAccepted ? (
                             <div className="flex items-center gap-1.5">
                               <button onClick={() => handleOpenPrivateChat(u)} className="bg-[#4338CA] text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 hover:bg-indigo-700"><MessageCircle className="w-3 h-3" /> ทักแชต</button>
-                              <button onClick={() => handleUnfriend(u.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200 transition" title="ลบเพื่อน"><Trash2 className="w-3 h-3" /></button>
+                              <button onClick={() => handleUnfriend(u.id)} className="flex items-center gap-0.5 text-[9px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-1.5 rounded-lg transition" title="ลบเพื่อน"><UserMinus className="w-3 h-3" /> ลบเพื่อน</button>
                             </div>
                           ) : pendingReceivedReq ? (
                             <div className="flex items-center gap-1.5">
-                              <button onClick={() => handleAcceptFriendRequest(pendingReceivedReq)} className="bg-emerald-600 text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 hover:bg-emerald-700 shadow-xs"><Check className="w-3 h-3" /> ยอมรับ</button>
-                              <button onClick={() => handleRejectFriendRequest(pendingReceivedReq)} className="bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 text-[9px] font-bold px-2 py-1.5 rounded-lg border border-slate-200 transition" title="ปฏิเสธ"><X className="w-3 h-3" /></button>
+                              <button onClick={() => handleRejectFriendRequest(pendingReceivedReq.id)} className="bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 text-[9px] font-bold px-2 py-1.5 rounded-lg border border-slate-200 transition">ปฏิเสธ</button>
+                              <button onClick={() => handleAcceptFriendRequest(pendingReceivedReq)} className="bg-indigo-600 hover:bg-indigo-700 text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-xs transition"><Check className="w-3 h-3" /> ยอมรับ</button>
                             </div>
                           ) : isPendingSent ? (
                             <div className="flex items-center gap-1">
@@ -3248,7 +3256,15 @@ export default function App() {
                       <span className="text-[9px] text-emerald-600 font-bold flex items-center gap-1">● ออนไลน์</span>
                     </div>
                   </div>
-                  <button onClick={() => handleUnfriend(activePrivateMember.id)} className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1.5 rounded-lg hover:bg-rose-100 shrink-0 ml-2">ลบเพื่อน</button>
+                  <button
+                    type="button"
+                    onClick={() => handleUnfriend(activePrivateMember.id)}
+                    className="flex items-center gap-1 text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1.5 rounded-xl shrink-0 ml-2 transition active:scale-95 shadow-2xs"
+                    title="ลบเพื่อน"
+                  >
+                    <UserMinus className="w-3.5 h-3.5" />
+                    <span>ลบเพื่อน</span>
+                  </button>
                 </div>
 
                 <div ref={privateChatContainerRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3 text-xs no-scrollbar">
@@ -3301,9 +3317,21 @@ export default function App() {
                     {friendRequests.map(req => (
                       <div key={req.id} className="bg-white p-2 rounded-xl flex items-center justify-between border border-indigo-100">
                         <span className="text-xs font-bold text-slate-800">{req.sender_name}</span>
-                        <div className="flex items-center gap-1.5">
-                          <button onClick={() => handleAcceptFriendRequest(req)} className="bg-indigo-600 text-white text-[10px] font-bold px-3 py-1 rounded-lg flex items-center gap-1 hover:bg-indigo-700 shadow-xs"><Check className="w-3 h-3" /> ยอมรับ</button>
-                          <button onClick={() => handleRejectFriendRequest(req)} className="bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 text-[10px] font-bold px-2 py-1 rounded-lg border border-slate-200 transition flex items-center gap-1"><X className="w-3 h-3" /> ปฏิเสธ</button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleRejectFriendRequest(req.id)}
+                            className="border border-slate-200 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition"
+                          >
+                            ปฏิเสธ
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAcceptFriendRequest(req)}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-xs transition"
+                          >
+                            <Check className="w-3 h-3" /> ยอมรับ
+                          </button>
                         </div>
                       </div>
                     ))}
