@@ -976,7 +976,7 @@ export default function App() {
       .eq('status', 'pending');
     setSentFriendRequests(sentReqs || []);
 
-    // Conversation partners from 2 sources (dedupe): accepted friend_requests + direct_messages
+    // Friendship status is the source of truth; old messages must not restore a removed friend.
     const { data: acceptedReqs } = await supabase
       .from('friend_requests')
       .select('sender_id,receiver_id,status')
@@ -995,15 +995,17 @@ export default function App() {
       const otherId = String(r.sender_id) === String(user.id) ? r.receiver_id : r.sender_id;
       if (otherId && String(otherId) !== String(user.id)) partnerIdsSet.add(String(otherId));
     });
-    (dmRows || []).forEach(m => {
-      const otherId = String(m.sender_id) === String(user.id) ? m.receiver_id : m.sender_id;
-      if (otherId && String(otherId) !== String(user.id)) partnerIdsSet.add(String(otherId));
-    });
 
     const partnerIds = Array.from(partnerIdsSet);
     if (partnerIds.length === 0) {
       setAcceptedFriends([]);
       setRecentDMMessages({});
+      setNotifications(prev => prev.filter(n => n.type !== 'dm'));
+      if (activePrivateMember) {
+        setActivePrivateMember(null);
+        setPrivateMessages([]);
+        setCurrentTab(current => current === 'private_chat' ? 'my_groups' : current);
+      }
       return;
     }
 
@@ -1015,12 +1017,17 @@ export default function App() {
     const profileById = new window.Map((profiles || []).map(p => [String(p.id), p]));
     const partners = partnerIds.map(id => profileById.get(String(id)) || { id });
     setAcceptedFriends(partners);
+    if (activePrivateMember && !partnerIdsSet.has(String(activePrivateMember.id))) {
+      setActivePrivateMember(null);
+      setPrivateMessages([]);
+      setCurrentTab(current => current === 'private_chat' ? 'my_groups' : current);
+    }
 
     const latestByPartner = new window.Map();
     (dmRows || []).forEach(m => {
       const otherId = String(m.sender_id) === String(user.id) ? m.receiver_id : m.sender_id;
       const key = String(otherId);
-      if (!key || key === String(user.id)) return;
+      if (!key || key === String(user.id) || !partnerIdsSet.has(key)) return;
       if (!latestByPartner.has(key)) latestByPartner.set(key, m);
     });
 
@@ -1041,7 +1048,7 @@ export default function App() {
     });
 
     setNotifications(prev => {
-      let updated = [...prev];
+      let updated = prev.filter(n => n.type !== 'dm' || partnerIdsSet.has(String(n.targetUser?.id)));
       latestByPartner.forEach((last, pid) => {
         const profile = profileById.get(String(pid)) || partners.find(p => String(p.id) === String(pid));
         const isFromMe = String(last.sender_id) === String(user.id);
@@ -1080,17 +1087,7 @@ export default function App() {
         const newMsg = payload.new;
         const isFromMe = newMsg.sender_id === user.id;
         const targetFriendId = isFromMe ? newMsg.receiver_id : newMsg.sender_id;
-
-        setAcceptedFriends(prev => {
-          const exists = prev.some(f => f.id === targetFriendId);
-          if (!exists) {
-            if (!targetFriendId) return prev;
-            supabase.from('profiles').select('*').eq('id', targetFriendId).single().then(({ data: newProfile }) => {
-              if (newProfile) setAcceptedFriends(current => [...current, newProfile]);
-            });
-          }
-          return prev;
-        });
+        if (!acceptedFriends.some(friend => String(friend.id) === String(targetFriendId))) return;
 
         const cleanText = newMsg.text?.startsWith('[IMAGE]:') ? '📷 [ส่งรูปภาพ]' : newMsg.text;
         const isCurrentlyChatting = currentTab === 'private_chat' && activePrivateMember?.id === targetFriendId;
@@ -1289,7 +1286,7 @@ export default function App() {
       }).subscribe();
 
     return () => supabase.removeChannel(globalChannel);
-  }, [user, currentUser.name, currentTab, activePrivateMember, selectedGroup, studyGroups, myJoinedGroupIds]);
+  }, [user, currentUser.name, currentTab, activePrivateMember, selectedGroup, studyGroups, myJoinedGroupIds, acceptedFriends]);
 
   // Realtime Friends Search
   const activeSearchQuery = friendSearchTerm || searchTerm;
@@ -1389,6 +1386,7 @@ export default function App() {
   useEffect(() => {
     if (!activePrivateMember?.id || !user?.id || currentTab !== 'private_chat') return;
 
+    let isActive = true;
     setRecentDMMessages(prev => ({ ...prev, [activePrivateMember.id]: { ...prev[activePrivateMember.id], unread: false } }));
 
     const fetchDMs = async () => {
@@ -1396,7 +1394,7 @@ export default function App() {
         .or(`and(sender_id.eq.${user.id},receiver_id.eq.${activePrivateMember.id}),and(sender_id.eq.${activePrivateMember.id},receiver_id.eq.${user.id})`)
         .order('created_at', { ascending: true });
 
-      if (!error && data) {
+      if (!error && data && isActive) {
         data.forEach(m => markMessageAsRead(m.id));
         setPrivateMessages(data);
         setTimeout(() => scrollToBottom(true, privateChatContainerRef), 30);
@@ -1407,6 +1405,7 @@ export default function App() {
 
     const dmChannel = supabase.channel(`direct-messages-realtime-${user.id}-${activePrivateMember.id}-${Date.now()}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, (payload) => {
+        if (!isActive) return;
         const newMsg = payload.new;
         if ((newMsg.sender_id === user.id && newMsg.receiver_id === activePrivateMember.id) ||
           (newMsg.sender_id === activePrivateMember.id && newMsg.receiver_id === user.id)) {
@@ -1420,7 +1419,10 @@ export default function App() {
       })
       .subscribe();
 
-    return () => supabase.removeChannel(dmChannel);
+    return () => {
+      isActive = false;
+      supabase.removeChannel(dmChannel);
+    };
   }, [activePrivateMember, user, currentTab]);
 
   // Actions
@@ -1499,19 +1501,10 @@ export default function App() {
   const handleUnfriend = async (friendUserId) => {
     if (!user?.id || !friendUserId) return;
     if (!window.confirm('ต้องการลบเพื่อนคนนี้ออกจากรายชื่อเพื่อนใช่ไหม?')) return;
-    const { error } = await supabase
-      .from('friend_requests')
-      .delete()
-      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${friendUserId}),and(sender_id.eq.${friendUserId},receiver_id.eq.${user.id})`);
+    const { error } = await supabase.rpc('unfriend_user', { target_user_id: String(friendUserId) });
     if (error) {
-      const { error: updateErr } = await supabase
-        .from('friend_requests')
-        .update({ status: 'unfriended' })
-        .or(`and(sender_id.eq.${user.id},receiver_id.eq.${friendUserId}),and(sender_id.eq.${friendUserId},receiver_id.eq.${user.id})`);
-      if (updateErr) {
-        notifyUser('ไม่สามารถลบเพื่อนได้: ' + error.message, 'error');
-        return;
-      }
+      notifyUser('ไม่สามารถลบเพื่อนและประวัติแชตได้: ' + error.message, 'error');
+      return;
     }
     setAcceptedFriends(prev => prev.filter(f => String(f.id) !== String(friendUserId)));
     setFriendRequests(prev => prev.filter(r => String(r.sender_id) !== String(friendUserId) && String(r.receiver_id) !== String(friendUserId)));
@@ -1522,8 +1515,10 @@ export default function App() {
       delete next[String(friendUserId)];
       return next;
     });
+    setNotifications(prev => prev.filter(n => !(n.type === 'dm' && String(n.targetUser?.id) === String(friendUserId))));
     if (activePrivateMember && String(activePrivateMember.id) === String(friendUserId)) {
       setActivePrivateMember(null);
+      setPrivateMessages([]);
       setCurrentTab('my_groups');
     }
     notifyUser('ลบเพื่อนเรียบร้อยแล้ว');

@@ -22,3 +22,7 @@ The SQL in [`supabase/rls_policies.sql`](./supabase/rls_policies.sql) enables Ro
 To apply it, open the Supabase project, go to **SQL Editor**, create a query, paste the contents of that file, and run it. Test with two ordinary signed-in accounts: one creates a group, the other requests to join, the host approves, and both verify they can chat. A pending member should not be able to read or send group messages.
 
 This script does not change policies for profiles, friend requests, or private messages.
+
+## Removing a friend and private chat history
+
+The SQL in [`supabase/friend_lifecycle.sql`](./supabase/friend_lifecycle.sql) adds the authenticated `unfriend_user` function. It atomically removes the accepted friendship and deletes all direct messages between the two users. Apply it in the Supabase project's **SQL Editor** before using the remove-friend action. Removed users must send and accept a new friend request before chatting again.
