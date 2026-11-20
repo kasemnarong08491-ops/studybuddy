@@ -6,6 +6,11 @@
   <meta name="theme-color" content="#7776dd">
   <title>SPU Study Buddy | หาเพื่อนติวในมอ</title>
   <style>
+      #route-to-place,
+      #quick-building-groups,
+      .route-btn {
+        display: none !important;
+      }
     :root {
       color-scheme: light;
       --ink: #282642;
@@ -371,7 +376,6 @@
           <button class="place-button" data-place="plaza" type="button"><span class="place-icon">🌿</span><span><span class="place-name">ลานกิจกรรม</span><span class="place-sub">นัดเจอกันง่าย</span></span><span class="place-count" id="place-count-plaza">0</span></button>
         </div>
         <button class="explore-building-btn" id="enter-building" type="button">🚪 สำรวจภายในอาคาร</button>
-        <button class="explore-building-btn" id="route-to-place" type="button">🧭 นำทางไปจุดนี้</button>
         <div class="safety-note"><strong>นัดอย่างสบายใจ</strong><br>นัดในพื้นที่สาธารณะของมหาวิทยาลัย และหลีกเลี่ยงการแชร์ข้อมูลส่วนตัว</div>
       </section>
       <aside class="glass groups interactive">
@@ -399,7 +403,7 @@
         <button class="quick-card-close" id="close-quick-building" type="button" aria-label="ปิด">×</button>
       </div>
       <div class="quick-card-actions">
-        <button id="quick-building-groups" type="button">🧭 ดูกลุ่มและนำทาง</button>
+        <button id="quick-building-groups" type="button">ดูกลุ่มในอาคารนี้</button>
       </div>
     </section>
     <section class="floor-explode-panel" id="floor-explode-panel" aria-live="polite" hidden>
@@ -695,18 +699,11 @@
               <span>🗓️ ${escapeHtml(formatDate(group.date))} · ${escapeHtml(group.time)} น.</span>
               <span>👥 ${group.joined}/${group.capacity} คน${group.description ? ` · ${escapeHtml(group.description)}` : ''}</span>
             </div>
-            <div class="card-bottom"><span class="host">ชวนโดย ${escapeHtml(group.host)}</span><div class="card-actions"><button class="route-btn" data-route="${escapeHtml(group.place)}" type="button">🧭 นำทาง</button><button class="join-btn${group.joinedByMe ? ' joined' : ''}" data-join="${escapeHtml(group.id)}" type="button" ${full && !group.joinedByMe ? 'disabled' : ''}>${buttonText}</button></div></div>
+            <div class="card-bottom"><span class="host">ชวนโดย ${escapeHtml(group.host)}</span><div class="card-actions"><button class="join-btn${group.joinedByMe ? ' joined' : ''}" data-join="${escapeHtml(group.id)}" type="button" ${full && !group.joinedByMe ? 'disabled' : ''}>${buttonText}</button></div></div>
           </article>`;
         }).join('');
       }
       groupList.addEventListener('click', event => {
-        const routeButton = event.target.closest('[data-route]');
-        if (routeButton) {
-          const place = routeButton.dataset.route;
-          if (window.showCampusRoute) window.showCampusRoute(place);
-          showToast(`กำลังพาไปยัง${placeNames[place]} · เส้นทางเริ่มจากประตูมหาวิทยาลัย`);
-          return;
-        }
         const button = event.target.closest('[data-join]');
         if (!button) return;
         const group = groups.find(item => item.id === button.dataset.join);
@@ -714,9 +711,8 @@
         group.joined += 1;
         group.joinedByMe = true;
         if (persistGroups()) {
-          render();
-          if (window.showCampusRoute) window.showCampusRoute(group.place);
-          showToast(`เข้าร่วมกลุ่ม “${group.title}” แล้ว · นัดกันที่${placeNames[group.place]}`);
+        render();
+        showToast(`เข้าร่วมกลุ่ม “${group.title}” แล้ว · นัดกันที่${placeNames[group.place]}`);
         } else {
           group.joined -= 1;
           group.joinedByMe = false;
@@ -735,7 +731,6 @@
         activePlace = button.dataset.place;
         document.querySelectorAll('.place-button').forEach(item => item.classList.toggle('active', item === button));
         enterBuildingButton.classList.toggle('visible', activePlace !== 'all');
-        document.getElementById('route-to-place').classList.toggle('visible', activePlace !== 'all');
         render();
         if (button.dataset.place !== 'all' && window.focusPlace) window.focusPlace(button.dataset.place);
       });
@@ -744,11 +739,6 @@
         if (!window.showExplodedCampusBuilding || !window.showExplodedCampusBuilding(activePlace)) {
           openBuilding(activePlace);
         }
-      });
-      document.getElementById('route-to-place').addEventListener('click', () => {
-        if (activePlace === 'all' || !window.showCampusRoute) return;
-        window.showCampusRoute(activePlace);
-        showToast(`กำลังพาไปยัง${placeNames[activePlace]} · เส้นทางเริ่มจากประตูมหาวิทยาลัย`);
       });
       document.getElementById('open-campus-map').addEventListener('click', () => {
         referenceZoom = 1;
@@ -839,7 +829,7 @@
           activeCategory = 'all';
           document.querySelectorAll('.place-button').forEach(item => item.classList.toggle('active', item.dataset.place === 'all'));
           document.querySelectorAll('.filter-btn').forEach(item => item.classList.toggle('active', item.dataset.filter === 'all'));
-          document.getElementById('route-to-place').classList.remove('visible');
+          document.getElementById('route-to-place')?.classList.remove('visible');
           render();
           closeModal();
           event.currentTarget.reset();
@@ -933,7 +923,6 @@
           }
           window.focusCampusBuilding = focusCampusBuilding;
           window.focusPlace = focusPlace;
-          window.showCampusRoute = showReferenceRoute;
           window.showExplodedCampusBuilding = () => false;
           window.closeExplodedCampusBuilding = () => {};
           mapCanvas.querySelectorAll('[data-map-building]').forEach(button => {
@@ -2584,7 +2573,7 @@
             quickBuildingPlace = closestStudyPlace(x, z);
             quickBuildingNumber = String(buildingNumber);
             quickBuildingGroupsButton.disabled = false;
-            quickBuildingGroupsButton.textContent = '🧭 ดูกลุ่มและนำทาง';
+            quickBuildingGroupsButton.textContent = 'ดูกลุ่มในอาคารนี้';
             document.getElementById('quick-building-title').textContent = `อาคารเรียน ${buildingNumber}`;
             document.getElementById('quick-building-description').textContent =
               `อาคารจำลอง · จุดนัดติวที่ใกล้ที่สุดคือ${places[quickBuildingPlace].name}`;
@@ -2594,7 +2583,7 @@
             quickBuildingCard.hidden = true;
             quickBuildingNumber = null;
             quickBuildingGroupsButton.disabled = false;
-            quickBuildingGroupsButton.textContent = '🧭 ดูกลุ่มและนำทาง';
+            quickBuildingGroupsButton.textContent = 'ดูกลุ่มในอาคารนี้';
             clearRoute(true);
             animateCameraTo(new THREE.Vector3(0, 1, -2), new THREE.Vector3(-72, 86, 76), 900);
           });
@@ -2606,12 +2595,7 @@
             document.querySelectorAll('.filter-btn').forEach(item => item.classList.toggle('active', item.dataset.filter === 'all'));
             setMapFocus(false);
             render();
-            const routeStarted = showRouteTo(activePlace, quickBuildingNumber);
-            if (routeStarted) {
-              quickBuildingNumber = null;
-              quickBuildingGroupsButton.disabled = true;
-              quickBuildingGroupsButton.textContent = '✓ กำลังนำทาง';
-            }
+            quickBuildingNumber = null;
           });
           renderer.domElement.addEventListener('pointerup', event => {
             if (event.button !== 0 ||
@@ -2647,7 +2631,6 @@
                   activePlace = node.userData.place;
                   document.querySelectorAll('.place-button').forEach(item => item.classList.toggle('active', item === placeButton));
                   enterBuildingButton.classList.add('visible');
-                  document.getElementById('route-to-place').classList.add('visible');
                   render();
                   showExplodedBuilding(node.userData.place);
                 }
@@ -2724,7 +2707,7 @@
             requestAnimationFrame(animateRouteFocus);
           }
           window.focusPlace = focusPlace;
-          window.showCampusRoute = showRouteTo;
+          window.showCampusRoute = () => false;
 
           function navigateToLocation(rawLocation) {
             if (!rawLocation || typeof rawLocation !== 'string') return;
@@ -2805,7 +2788,7 @@
             quickBuildingCard.hidden = true;
             quickBuildingNumber = null;
             quickBuildingGroupsButton.disabled = false;
-            quickBuildingGroupsButton.textContent = '🧭 ดูกลุ่มและนำทาง';
+            quickBuildingGroupsButton.textContent = 'ดูกลุ่มในอาคารนี้';
           });
           let eveningMode = false;
           let weatherMode = 'sunny';
