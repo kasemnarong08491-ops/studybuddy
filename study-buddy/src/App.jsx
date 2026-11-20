@@ -5,7 +5,7 @@ import {
   ArrowLeft, Send, LogIn, LogOut, Users, Mail, Lock,
   MessageCircle, X, CheckCircle, Bell, Edit, Trash2, Clock,
   UserPlus, UserMinus, Check, ShieldAlert, Paperclip, LogOut as LeaveIcon,
-  BookOpen, Sparkles, GraduationCap, ChevronRight, Sun, Moon, Camera
+  BookOpen, Sparkles, GraduationCap, ChevronRight, Camera
 } from 'lucide-react';
 
 // --- AVATARS DATA ---
@@ -148,7 +148,6 @@ function StudyBuddyBit({ className = '', mood = 'wave' }) {
 
 export default function App() {
   // Lighting & Sound State
-  const [isLightsOff, setIsLightsOff] = useState(() => localStorage.getItem('studybuddy_theme') === 'dark');
   const [isSparking, setIsSparking] = useState(false);
   const [bitMood, setBitMood] = useState('wave');
   const [bitPhraseIndex, setBitPhraseIndex] = useState(0);
@@ -323,15 +322,6 @@ export default function App() {
     }
   };
 
-  const handleToggleLights = () => {
-    setIsSparking(true);
-    setTimeout(() => setIsSparking(false), 300);
-    setIsLightsOff(prev => {
-      const next = !prev;
-      localStorage.setItem('studybuddy_theme', next ? 'dark' : 'light');
-      return next;
-    });
-  };
 
   const currentThemeObj = themePresets.indigo;
 
@@ -363,7 +353,7 @@ export default function App() {
 
     const renderRain = () => {
       ctx.clearRect(0, 0, width, height);
-      ctx.strokeStyle = isLightsOff ? 'rgba(255, 255, 255, 0.35)' : 'rgba(99, 102, 241, 0.3)';
+      ctx.strokeStyle = 'rgba(99, 102, 241, 0.3)';
       ctx.lineWidth = 1.2;
       ctx.lineCap = 'round';
 
@@ -389,7 +379,7 @@ export default function App() {
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationFrameId);
     };
-  }, [user, isLightsOff]);
+  }, [user]);
 
 
   const markMessageAsRead = (msgId) => {
@@ -2171,67 +2161,6 @@ export default function App() {
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .studybuddy-dark { color-scheme: dark; }
-        .studybuddy-dark .bg-white,
-        .studybuddy-dark [class*="bg-[#FFFFFF]"],
-        .studybuddy-dark [class*="bg-[#F8FAFC]"] {
-          background-color: #1e293b !important;
-        }
-        .studybuddy-dark .bg-slate-50,
-        .studybuddy-dark .bg-slate-100,
-        .studybuddy-dark .bg-slate-200\/80 {
-          background-color: #334155 !important;
-        }
-        .studybuddy-dark .text-slate-900,
-        .studybuddy-dark .text-slate-800,
-        .studybuddy-dark .text-slate-700 {
-          color: #f1f5f9 !important;
-        }
-        .studybuddy-dark .text-slate-600,
-        .studybuddy-dark .text-slate-500,
-        .studybuddy-dark .text-slate-400 {
-          color: #cbd5e1 !important;
-        }
-        .studybuddy-dark [class*="text-slate-"] {
-          color: #e2e8f0 !important;
-        }
-        .studybuddy-dark [class*="text-slate-950"],
-        .studybuddy-dark [class*="text-slate-900"],
-        .studybuddy-dark [class*="text-slate-800"],
-        .studybuddy-dark [class*="text-slate-700"] {
-          color: #f8fafc !important;
-        }
-        .studybuddy-dark [class*="bg-slate-50"],
-        .studybuddy-dark [class*="bg-slate-100"],
-        .studybuddy-dark [class*="bg-slate-200"] {
-          background-color: #334155 !important;
-        }
-        .studybuddy-dark [class*="bg-slate-50"] {
-          background-color: #1e293b !important;
-        }
-        .studybuddy-dark h1,
-        .studybuddy-dark h2,
-        .studybuddy-dark h3,
-        .studybuddy-dark h4,
-        .studybuddy-dark p,
-        .studybuddy-dark label {
-          color: #f8fafc;
-        }
-        .studybuddy-dark .border-slate-100,
-        .studybuddy-dark .border-slate-200,
-        .studybuddy-dark .border-slate-300 {
-          border-color: #475569 !important;
-        }
-        .studybuddy-dark input,
-        .studybuddy-dark textarea,
-        .studybuddy-dark select {
-          color: #f8fafc;
-          color-scheme: dark;
-        }
-        .studybuddy-dark input::placeholder,
-        .studybuddy-dark textarea::placeholder {
-          color: #94a3b8;
-        }
         .studybuddy-app-frame { width: 100%; max-width: 480px; min-height: 0; height: 100dvh; flex: none; }
         @media (min-width: 640px) {
           .studybuddy-app-frame {
@@ -2272,20 +2201,8 @@ export default function App() {
       `}</style>
 
       {/* Frame มือถือ พร้อมระบบเปิดไฟปิดไฟ */}
-      <div className={`studybuddy-app-frame max-w-4xl rounded-none sm:rounded-[40px] shadow-2xl border-0 sm:border-[6px] overflow-hidden flex flex-col relative transition-all duration-300 ${isLightsOff ? 'studybuddy-dark bg-slate-950 border-slate-950' : 'bg-[#F8FAFC] border-slate-800'} ${!user && isSparking ? 'ring-4 ring-amber-400 scale-[0.998]' : ''
+      <div className={`studybuddy-app-frame max-w-4xl rounded-none sm:rounded-[40px] shadow-2xl border-0 sm:border-[6px] overflow-hidden flex flex-col relative transition-all duration-300 bg-[#F8FAFC] border-slate-800 ${!user && isSparking ? 'ring-4 ring-amber-400 scale-[0.998]' : ''
         }`}>
-
-        {!user && (
-          <button
-            type="button"
-            onClick={handleToggleLights}
-            className={`absolute top-4 right-4 z-40 p-2 rounded-full backdrop-blur-md border border-white/30 text-white shadow-md transition-all ${isLightsOff ? 'bg-amber-500/80 hover:bg-amber-500' : 'bg-slate-800/60 hover:bg-slate-800'}`}
-            title={isLightsOff ? 'เปลี่ยนเป็นโหมดสว่าง' : 'เปลี่ยนเป็นโหมดมืด'}
-            aria-label={isLightsOff ? 'เปลี่ยนเป็นโหมดสว่าง' : 'เปลี่ยนเป็นโหมดมืด'}
-          >
-            {isLightsOff ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
-        )}
 
         {actionToast && (
           <div className="pointer-events-none absolute inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[60]" aria-live={actionToast.type === 'error' ? 'assertive' : 'polite'}>
@@ -2511,10 +2428,7 @@ export default function App() {
         {/* AUTH SCREEN */}
         {!user ? (
           <div
-            className={`flex-1 min-h-0 flex flex-col overflow-y-auto overscroll-contain no-scrollbar relative transition-colors duration-500 ${isLightsOff
-              ? `bg-gradient-to-b ${currentThemeObj.bg}`
-              : 'bg-[#F8FAFC]'
-              }`}
+            className="flex-1 min-h-0 flex flex-col overflow-y-auto overscroll-contain no-scrollbar relative transition-colors duration-500 bg-[#F8FAFC]"
           >
             <canvas
               ref={rainCanvasRef}
@@ -2522,10 +2436,7 @@ export default function App() {
             />
 
 
-            <div className={`pt-10 pb-8 px-6 text-white text-center relative overflow-hidden rounded-b-[36px] shadow-lg shrink-0 transition-all duration-500 z-10 ${isLightsOff
-              ? 'bg-slate-900/40 backdrop-blur-md border-b border-white/10'
-              : 'bg-gradient-to-br from-indigo-700 via-indigo-600 to-slate-900'
-              }`}>
+            <div className="pt-10 pb-8 px-6 text-white text-center relative overflow-hidden rounded-b-[36px] shadow-lg shrink-0 transition-all duration-500 z-10 bg-gradient-to-br from-indigo-700 via-indigo-600 to-slate-900">
               <div className="absolute top-4 left-4 z-20 flex flex-col items-start select-none pointer-events-none">
                 <div className="relative inline-block">
                   <span className="text-2xl font-black tracking-tight text-white leading-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)] font-sans">
@@ -2539,8 +2450,7 @@ export default function App() {
               <div className="absolute bottom-0 left-4 w-20 h-20 bg-indigo-400/20 rounded-full blur-lg pointer-events-none" />
 
               <div className="relative z-10 flex flex-col items-center">
-                <div className={`w-14 h-14 backdrop-blur-md rounded-2xl border border-white/20 flex items-center justify-center mb-3 shadow-inner ${isLightsOff ? 'bg-white/5 ring-2 ring-white/10' : 'bg-white/10'
-                  }`}>
+                <div className="w-14 h-14 backdrop-blur-md rounded-2xl border border-white/20 flex items-center justify-center mb-3 shadow-inner bg-white/10">
                   <BookOpen className="w-7 h-7 text-white" />
                 </div>
                 <div className="flex items-center gap-1.5 justify-center mb-1">
@@ -2560,16 +2470,13 @@ export default function App() {
 
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pt-6 pb-32 flex flex-col z-10 relative">
               <div className="mx-auto my-auto w-full max-w-md">
-                <div className={`p-1 rounded-2xl flex gap-1 mb-4 transition-all ${isLightsOff ? 'bg-slate-800/80 border border-slate-700 backdrop-blur-md' : 'bg-slate-200/80'
-                  }`}>
+                <div className="p-1 rounded-2xl flex gap-1 mb-4 transition-all bg-slate-200/80">
                   <button
                     type="button"
                     onClick={() => setAuthMode('login')}
                     className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${authMode === 'login'
-                      ? isLightsOff
-                        ? `${currentThemeObj.primaryBtn} text-white shadow-lg`
-                        : 'bg-white text-indigo-900 shadow-xs'
-                      : isLightsOff ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
+                      ? 'bg-white text-indigo-900 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
                       }`}
                   >
                     เข้าสู่ระบบ
@@ -2578,10 +2485,8 @@ export default function App() {
                     type="button"
                     onClick={() => setAuthMode('register')}
                     className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all ${authMode === 'register'
-                      ? isLightsOff
-                        ? `${currentThemeObj.primaryBtn} text-white shadow-lg`
-                        : 'bg-white text-indigo-900 shadow-xs'
-                      : isLightsOff ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-800'
+                      ? 'bg-white text-indigo-900 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
                       }`}
                   >
                     สมัครสมาชิก
@@ -2591,13 +2496,10 @@ export default function App() {
                 <form onSubmit={handleEmailAuth} className="space-y-3.5">
                   {authMode === 'register' && (
                     <div>
-                      <label className={`text-xs font-bold block mb-1.5 ${isLightsOff ? 'text-slate-300' : 'text-slate-600'}`}>
+                      <label className="text-xs font-bold block mb-1.5 text-slate-600">
                         ชื่อแสดงผล / Display Name
                       </label>
-                      <div className={`flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all ${isLightsOff
-                        ? 'bg-slate-900/70 border-slate-700 text-white focus-within:border-indigo-400 backdrop-blur-md'
-                        : 'bg-white/90 border-slate-200 text-slate-800 focus-within:border-indigo-500 backdrop-blur-md'
-                        }`}>
+                      <div className="flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all bg-white/90 border-slate-200 text-slate-800 focus-within:border-indigo-500 backdrop-blur-md">
                         <User className="w-4 h-4 text-slate-400 shrink-0" />
                         <input
                           type="text"
@@ -2611,13 +2513,10 @@ export default function App() {
                   )}
 
                   <div>
-                    <label className={`text-xs font-bold block mb-1.5 ${isLightsOff ? 'text-slate-300' : 'text-slate-600'}`}>
+                    <label className="text-xs font-bold block mb-1.5 text-slate-600">
                       อีเมล / Email
                     </label>
-                    <div className={`flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all ${isLightsOff
-                      ? 'bg-slate-900/70 border-slate-700 text-white focus-within:border-indigo-400 backdrop-blur-md'
-                      : 'bg-white/90 border-slate-200 text-slate-800 focus-within:border-indigo-500 backdrop-blur-md'
-                      }`}>
+                    <div className="flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all bg-white/90 border-slate-200 text-slate-800 focus-within:border-indigo-500 backdrop-blur-md">
                       <Mail className="w-4 h-4 text-slate-400 shrink-0" />
                       <input
                         type="email"
@@ -2632,13 +2531,10 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className={`text-xs font-bold block mb-1.5 ${isLightsOff ? 'text-slate-300' : 'text-slate-600'}`}>
+                    <label className="text-xs font-bold block mb-1.5 text-slate-600">
                       รหัสผ่าน / Password
                     </label>
-                    <div className={`flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all ${isLightsOff
-                      ? 'bg-slate-900/70 border-slate-700 text-white focus-within:border-indigo-400 backdrop-blur-md'
-                      : 'bg-white/90 border-slate-200 text-slate-800 focus-within:border-indigo-500 backdrop-blur-md'
-                      }`}>
+                    <div className="flex items-center border rounded-2xl px-3.5 py-2.5 gap-2 transition-all bg-white/90 border-slate-200 text-slate-800 focus-within:border-indigo-500 backdrop-blur-md">
                       <Lock className="w-4 h-4 text-slate-400 shrink-0" />
                       <input
                         type="password"
@@ -2655,10 +2551,7 @@ export default function App() {
                   <button
                     type="submit"
                     disabled={authLoading}
-                    className={`w-full text-white font-bold py-3.5 rounded-2xl text-sm shadow-md transition-all flex items-center justify-center gap-1.5 mt-4 disabled:opacity-70 ${isLightsOff
-                      ? currentThemeObj.primaryBtn
-                      : 'bg-[#4338CA] hover:bg-indigo-700 shadow-indigo-600/20'
-                      }`}
+                    className="w-full text-white font-bold py-3.5 rounded-2xl text-sm shadow-md transition-all flex items-center justify-center gap-1.5 mt-4 disabled:opacity-70 bg-[#4338CA] hover:bg-indigo-700 shadow-indigo-600/20"
                   >
                     {authLoading ? (
                       'กำลังดำเนินการ...'
@@ -2677,11 +2570,11 @@ export default function App() {
                 </form>
 
                 <div className="flex items-center gap-3 my-4" aria-hidden="true">
-                  <div className={`h-px flex-1 ${isLightsOff ? 'bg-slate-700' : 'bg-slate-200'}`} />
-                  <span className={`text-xs font-semibold ${isLightsOff ? 'text-slate-400' : 'text-slate-500'}`}>
+                  <div className="h-px flex-1 bg-slate-200" />
+                  <span className="text-xs font-semibold text-slate-500">
                     หรือ {authMode === 'login' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก'}ด้วย
                   </span>
-                  <div className={`h-px flex-1 ${isLightsOff ? 'bg-slate-700' : 'bg-slate-200'}`} />
+                  <div className="h-px flex-1 bg-slate-200" />
                 </div>
 
                 <button
@@ -2689,10 +2582,7 @@ export default function App() {
                   onClick={handleGoogleAuth}
                   disabled={authLoading}
                   aria-label={authMode === 'login' ? 'เข้าสู่ระบบด้วย Google' : 'สมัครสมาชิกด้วย Google'}
-                  className={`w-full flex items-center justify-center gap-2.5 rounded-2xl border py-3.5 text-sm font-bold transition-colors disabled:opacity-60 ${isLightsOff
-                    ? 'border-slate-700 bg-slate-900/70 text-white hover:bg-slate-800'
-                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
+                  className="w-full flex items-center justify-center gap-2.5 rounded-2xl border py-3.5 text-sm font-bold transition-colors disabled:opacity-60 border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
                 >
                   <svg aria-hidden="true" viewBox="0 0 48 48" className="h-5 w-5">
                     <path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.8 6.1-15Z" />
@@ -2705,14 +2595,13 @@ export default function App() {
               </div>
 
               <div className="mx-auto mb-auto w-full max-w-md text-center pt-4">
-                <p className={`text-sm ${isLightsOff ? 'text-slate-400' : 'text-slate-500'}`}>
+                <p className="text-sm text-slate-500">
                   {authMode === 'login' ? (
                     <>
                       ยังไม่มีบัญชีใช่ไหม?{' '}
                       <span
                         onClick={() => setAuthMode('register')}
-                        className={`font-bold cursor-pointer hover:underline ${isLightsOff ? currentThemeObj.accentText : 'text-indigo-600'
-                          }`}
+                        className="font-bold cursor-pointer hover:underline text-indigo-600"
                       >
                         สมัครสมาชิกใหม่
                       </span>
@@ -2722,8 +2611,7 @@ export default function App() {
                       มีบัญชีอยู่แล้ว?{' '}
                       <span
                         onClick={() => setAuthMode('login')}
-                        className={`font-bold cursor-pointer hover:underline ${isLightsOff ? currentThemeObj.accentText : 'text-indigo-600'
-                          }`}
+                        className="font-bold cursor-pointer hover:underline text-indigo-600"
                       >
                         เข้าสู่ระบบ
                       </span>
@@ -2737,21 +2625,12 @@ export default function App() {
           <>
             {/* TOP HEADER */}
             {currentTab !== 'room_chat' && currentTab !== 'private_chat' && (
-              <div className={`px-5 pt-6 pb-3 flex items-center justify-between border-b shrink-0 z-20 transition-colors ${isLightsOff ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
+              <div className="px-5 pt-6 pb-3 flex items-center justify-between border-b shrink-0 z-20 transition-colors bg-white border-slate-100">
                 <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setCurrentTab('home')}>
                   <div className="w-6 h-6 rounded-md bg-indigo-600 flex items-center justify-center text-white font-black text-xs">S</div>
                   <span className="font-bold text-lg text-[#4F46E5]">StudyBuddy</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleToggleLights}
-                    className={`p-1.5 rounded-full border transition-colors ${isLightsOff ? 'bg-slate-800 border-slate-700 text-amber-300 hover:bg-slate-700' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}
-                    title={isLightsOff ? 'เปลี่ยนเป็นโหมดสว่าง' : 'เปลี่ยนเป็นโหมดมืด'}
-                    aria-label={isLightsOff ? 'เปลี่ยนเป็นโหมดสว่าง' : 'เปลี่ยนเป็นโหมดมืด'}
-                  >
-                    {isLightsOff ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                  </button>
                   <button onClick={() => setShowQuickFriendModal(true)} className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-full border border-indigo-100 bg-indigo-50/50"><UserPlus className="w-5 h-5" /></button>
                   <button onClick={() => setCurrentTab('my_groups')} className={`p-1.5 rounded-full relative ${currentTab === 'my_groups' ? 'bg-indigo-100 text-indigo-600' : 'text-slate-600 hover:bg-slate-100'}`}>
                     <MessageCircle className="w-5 h-5" />
