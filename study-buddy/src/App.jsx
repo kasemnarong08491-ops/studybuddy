@@ -2,10 +2,10 @@
 import { supabase } from './supabaseClient';
 import {
   Search, Plus, Compass, User, MapPin, Calendar, ArrowRight,
-  ArrowLeft, Send, Map, LogIn, LogOut, Users, Mail, Lock,
+  ArrowLeft, Send, LogIn, LogOut, Users, Mail, Lock,
   MessageCircle, X, CheckCircle, Bell, Edit, Trash2, Clock,
   UserPlus, UserMinus, Check, ShieldAlert, Paperclip, LogOut as LeaveIcon,
-  BookOpen, Sparkles, GraduationCap, ChevronRight, Zap, Sun, Moon, Palette, Camera
+  BookOpen, Sparkles, GraduationCap, ChevronRight, Sun, Moon, Camera
 } from 'lucide-react';
 
 // --- AVATARS DATA ---
@@ -21,40 +21,13 @@ const cartoonAvatars = [
 // --- THEME COLOR CONFIG ---
 const themePresets = {
   indigo: {
-    name: 'Indigo Night',
+    name: 'Indigo',
     bg: 'from-indigo-900 via-slate-900 to-black',
     cardGlow: 'shadow-indigo-500/20 border-indigo-500/30',
     primaryBtn: 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30',
     accentText: 'text-indigo-400',
     dotBg: 'bg-indigo-600',
     particleColor: '99, 102, 241'
-  },
-  emerald: {
-    name: 'Emerald Focus',
-    bg: 'from-emerald-950 via-slate-900 to-black',
-    cardGlow: 'shadow-emerald-500/20 border-emerald-500/30',
-    primaryBtn: 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30',
-    accentText: 'text-emerald-400',
-    dotBg: 'bg-emerald-600',
-    particleColor: '16, 185, 129'
-  },
-  amber: {
-    name: 'Cyber Amber',
-    bg: 'from-amber-950 via-slate-900 to-black',
-    cardGlow: 'shadow-amber-500/20 border-amber-500/30',
-    primaryBtn: 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/30',
-    accentText: 'text-amber-400',
-    dotBg: 'bg-amber-600',
-    particleColor: '245, 158, 11'
-  },
-  purple: {
-    name: 'Neon Purple',
-    bg: 'from-purple-950 via-slate-900 to-black',
-    cardGlow: 'shadow-purple-500/20 border-purple-500/30',
-    primaryBtn: 'bg-[#7C3AED] hover:bg-purple-700 shadow-purple-600/30',
-    accentText: 'text-purple-400',
-    dotBg: 'bg-purple-600',
-    particleColor: '168, 85, 247'
   }
 };
 
@@ -102,21 +75,16 @@ const formatMessageDayLabel = (createdAt) => {
 
 const cleanProfileName = (name) => String(name || '').replace(/(?:\s*\(นักศึกษา SPU\))+\s*$/, '').trim();
 
-function drawSparkleStar(ctx, cx, cy, size, color, rotation = 0) {
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(rotation);
-  ctx.beginPath();
-  for (let i = 0; i < 4; i++) {
-    ctx.rotate(Math.PI / 2);
-    ctx.lineTo(0, size);
-    ctx.quadraticCurveTo(0, 0, size / 4, 0);
+const GenderBadge = ({ gender }) => {
+  const value = String(gender || '').trim().toLowerCase();
+  if (value === 'male' || value === 'ชาย') {
+    return <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-600">♂</span>;
   }
-  ctx.closePath();
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.restore();
-}
+  if (value === 'female' || value === 'หญิง') {
+    return <span className="text-xs font-bold px-1.5 py-0.5 rounded-full bg-pink-100 text-pink-500">♀</span>;
+  }
+  return null;
+};
 
 function StudyBuddyBit({ className = '', mood = 'wave' }) {
   return (
@@ -180,18 +148,13 @@ function StudyBuddyBit({ className = '', mood = 'wave' }) {
 
 export default function App() {
   // Lighting & Sound State
-  const [isLightsOff, setIsLightsOff] = useState(false);
+  const [isLightsOff, setIsLightsOff] = useState(() => localStorage.getItem('studybuddy_theme') === 'dark');
   const [isSparking, setIsSparking] = useState(false);
-  const [selectedTheme, setSelectedTheme] = useState('indigo');
-  const [showColorPicker, setShowColorPicker] = useState(false);
   const [bitMood, setBitMood] = useState('wave');
   const [bitPhraseIndex, setBitPhraseIndex] = useState(0);
 
   // Mouse Glow & Starfall Canvas Tracking
-  const mouseTrackingRef = useRef({ x: -200, y: -200, active: false, moved: false });
-  const customCursorRef = useRef(null);
   const rainCanvasRef = useRef(null);
-  const starfallCanvasRef = useRef(null);
   const mapIframeRef = useRef(null);
   const mapPageScrollRef = useRef(null);
   const mapIframeWheelHandlerRef = useRef(null);
@@ -247,6 +210,7 @@ export default function App() {
   const [groupDescription, setGroupDescription] = useState('');
   const [groupDate, setGroupDate] = useState('');
   const [groupTime, setGroupTime] = useState('13:00 - 15:00 น.');
+  const [customGroupTime, setCustomGroupTime] = useState('');
   const [maxMembersInput, setMaxMembersInput] = useState(5);
 
   // Group Members
@@ -321,43 +285,6 @@ export default function App() {
     if (actionToastTimerRef.current) window.clearTimeout(actionToastTimerRef.current);
   }, []);
 
-  // 🔊 WEB AUDIO SYNTHESIZER: เสียงไฟช็อต
-  const playElectricZapSound = () => {
-    try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx();
-
-      const bufferSize = ctx.sampleRate * 0.15;
-      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) {
-        data[i] = Math.random() * 2 - 1;
-      }
-
-      const noise = ctx.createBufferSource();
-      noise.buffer = buffer;
-
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'bandpass';
-      filter.frequency.value = 2500;
-      filter.Q.value = 3;
-
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
-
-      noise.connect(filter);
-      filter.connect(gain);
-      gain.connect(ctx.destination);
-
-      noise.start();
-      noise.stop(ctx.currentTime + 0.15);
-    } catch (e) {
-      console.log('Audio Context Error:', e);
-    }
-  };
-
   // 🔔 WEB AUDIO SYNTHESIZER: เสียงกระดิ่งแจ้งเตือนนุ่มๆ (Notification Chime)
   const playNotificationSound = () => {
     try {
@@ -397,13 +324,16 @@ export default function App() {
   };
 
   const handleToggleLights = () => {
-    playElectricZapSound();
     setIsSparking(true);
     setTimeout(() => setIsSparking(false), 300);
-    setIsLightsOff(prev => !prev);
+    setIsLightsOff(prev => {
+      const next = !prev;
+      localStorage.setItem('studybuddy_theme', next ? 'dark' : 'light');
+      return next;
+    });
   };
 
-  const currentThemeObj = themePresets[selectedTheme] || themePresets.indigo;
+  const currentThemeObj = themePresets.indigo;
 
   // 🌧️ 1. RAIN ANIMATION ENGINE
   useEffect(() => {
@@ -461,97 +391,6 @@ export default function App() {
     };
   }, [user, isLightsOff]);
 
-  // ✨ 2. STARFALL & SPARKLE DUST MOUSE ENGINE
-  useEffect(() => {
-    if (user) return;
-    const canvas = starfallCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-
-    let animFrameId;
-    let particles = [];
-    let width = (canvas.width = canvas.parentElement.clientWidth);
-    let height = (canvas.height = canvas.parentElement.clientHeight);
-
-    const handleResize = () => {
-      if (!canvas.parentElement) return;
-      width = canvas.width = canvas.parentElement.clientWidth;
-      height = canvas.height = canvas.parentElement.clientHeight;
-    };
-    window.addEventListener('resize', handleResize);
-
-    const renderStarfall = () => {
-      ctx.clearRect(0, 0, width, height);
-
-      const mouse = mouseTrackingRef.current;
-      if (mouse.active && mouse.moved && mouse.x > 0 && mouse.y > 0) {
-        mouse.moved = false;
-        for (let i = 0; i < 2; i++) {
-          particles.push({
-            x: mouse.x + (Math.random() * 16 - 8),
-            y: mouse.y + (Math.random() * 16 - 8),
-            vx: (Math.random() - 0.5) * 1.5,
-            vy: (Math.random() - 0.5) * 1.5 + 0.5,
-            size: Math.random() * 7 + 4,
-            alpha: 1,
-            rotation: Math.random() * Math.PI,
-            rotSpeed: (Math.random() - 0.5) * 0.08,
-            isSparkle: Math.random() > 0.4
-          });
-        }
-      }
-
-      for (let i = particles.length - 1; i >= 0; i--) {
-        const p = particles[i];
-        p.x += p.vx;
-        p.y += p.vy;
-        p.alpha -= 0.025;
-        p.rotation += p.rotSpeed;
-
-        if (p.alpha <= 0) {
-          particles.splice(i, 1);
-          continue;
-        }
-
-        ctx.save();
-        ctx.globalAlpha = p.alpha;
-
-        if (p.isSparkle) {
-          const starColor = `rgba(${themePresets[selectedTheme].particleColor}, ${p.alpha})`;
-          drawSparkleStar(ctx, p.x, p.y, p.size, starColor, p.rotation);
-        } else {
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.size / 3, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha})`;
-          ctx.shadowBlur = 8;
-          ctx.shadowColor = `rgba(${themePresets[selectedTheme].particleColor}, 1)`;
-          ctx.fill();
-        }
-        ctx.restore();
-      }
-
-      animFrameId = requestAnimationFrame(renderStarfall);
-    };
-
-    renderStarfall();
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      cancelAnimationFrame(animFrameId);
-    };
-  }, [user, selectedTheme]);
-
-  const handleMouseMove = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    mouseTrackingRef.current = { x, y, active: true, moved: true };
-
-    if (customCursorRef.current) {
-      customCursorRef.current.style.transform =
-        `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
-      customCursorRef.current.style.opacity = '1';
-    }
-  };
 
   const markMessageAsRead = (msgId) => {
     if (!msgId) return;
@@ -772,7 +611,7 @@ export default function App() {
     if (pendingUserIds.length) {
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id,display_name,avatar')
+        .select('id,display_name,avatar,gender')
         .in('id', pendingUserIds);
       if (profiles) profileById = new window.Map(profiles.map(profile => [String(profile.id), profile]));
     }
@@ -783,6 +622,7 @@ export default function App() {
         ...member,
         user_name: profile?.display_name || member.user_name,
         user_avatar: profile?.avatar || member.user_avatar,
+        gender: profile?.gender || member.gender,
         study_groups: groupById.get(String(member.group_id)) || null
       };
     });
@@ -1300,8 +1140,8 @@ export default function App() {
       if (error?.code === 'PGRST202') {
         ({ data, error } = await supabase
           .from('profiles')
-          .select('id,display_name,email,avatar,faculty')
-          .or(`display_name.ilike.%${query}%,email.ilike.%${query}%`)
+          .select('id,display_name,email,avatar,faculty,gender')
+          .ilike('display_name', `${query}%`)
           .limit(10));
       }
 
@@ -1309,14 +1149,17 @@ export default function App() {
         console.error('Unable to search profiles:', error);
         setSearchedFriends([]);
       } else if (data) {
+        const normalizedQuery = query.trim().toLowerCase();
         setSearchedFriends(data
           .filter(p => p.id !== user?.id)
+          .filter(p => cleanProfileName(p.display_name || p.full_name || p.name || '').trim().toLowerCase().startsWith(normalizedQuery))
           .map(p => ({
             id: p.id,
-            name: cleanProfileName(p.display_name || p.email?.split('@')[0] || 'เพื่อน'),
+            name: cleanProfileName(p.display_name || p.full_name || p.name || p.email?.split('@')[0] || 'เพื่อน'),
             faculty: p.faculty || '',
             avatar: p.avatar || cartoonAvatars[0].url,
-            email: p.email || ''
+            email: p.email || '',
+            gender: p.gender || ''
           })));
       }
       setIsSearchingRealtime(false);
@@ -2099,6 +1942,20 @@ export default function App() {
   const handleOpenEditGroupModal = () => {
     setCustomSubject(selectedGroup.subject); setGroupTitle(selectedGroup.title);
     setSelectedCategory(selectedGroup.category);
+    const existingTime = String(selectedGroup.date_time || '').split('|')[1]?.trim();
+    const standardTimes = [
+      '09:00 - 12:00 น.',
+      '13:00 - 15:00 น.',
+      '15:00 - 17:00 น.',
+      '17:00 - 19:00 น.'
+    ];
+    if (existingTime && !standardTimes.includes(existingTime)) {
+      setGroupTime('__custom__');
+      setCustomGroupTime(existingTime);
+    } else if (existingTime) {
+      setGroupTime(existingTime);
+      setCustomGroupTime('');
+    }
     const standardLocations = [
       'อาคาร 11 ชั้น 5 (สำนักหอสมุด SPU)',
       'อาคาร 5 ชั้น 8 (คณะ IT SPU)',
@@ -2139,6 +1996,15 @@ export default function App() {
       return;
     }
 
+    let finalStudyTime = groupTime;
+    if (groupTime === '__custom__') {
+      finalStudyTime = customGroupTime.trim();
+      if (!finalStudyTime) {
+        notifyUser('กรุณาระบุช่วงเวลาติวในช่องกำหนดเอง');
+        return;
+      }
+    }
+
     // จัดการสถานที่นัดพบ กรณีเลือก "อื่นๆ" (other)
     let finalLocation = locationText;
     if (locationText === 'other') {
@@ -2151,8 +2017,8 @@ export default function App() {
     }
 
     const formattedDateTime = groupDate
-      ? `${groupDate} | ${groupTime}`
-      : `เสาร์นี้ | ${groupTime}`;
+      ? `${groupDate} | ${finalStudyTime}`
+      : `เสาร์นี้ | ${finalStudyTime}`;
 
     const computedFormat = finalLocation.includes('Google Meet') || finalLocation.toLowerCase().includes('discord') || finalLocation.includes('ออนไลน์') ? 'online' : 'onsite';
 
@@ -2225,7 +2091,8 @@ export default function App() {
     setActivePrivateMember({
       id: targetUser.id,
       name: cleanName,
-      avatar: targetUser.avatar || cartoonAvatars[0].url
+      avatar: targetUser.avatar || cartoonAvatars[0].url,
+      gender: targetUser.gender || ''
     });
 
     setRecentDMMessages(prev => ({ ...prev, [targetUser.id]: { ...prev[targetUser.id], unread: false } }));
@@ -2304,6 +2171,67 @@ export default function App() {
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .studybuddy-dark { color-scheme: dark; }
+        .studybuddy-dark .bg-white,
+        .studybuddy-dark [class*="bg-[#FFFFFF]"],
+        .studybuddy-dark [class*="bg-[#F8FAFC]"] {
+          background-color: #1e293b !important;
+        }
+        .studybuddy-dark .bg-slate-50,
+        .studybuddy-dark .bg-slate-100,
+        .studybuddy-dark .bg-slate-200\/80 {
+          background-color: #334155 !important;
+        }
+        .studybuddy-dark .text-slate-900,
+        .studybuddy-dark .text-slate-800,
+        .studybuddy-dark .text-slate-700 {
+          color: #f1f5f9 !important;
+        }
+        .studybuddy-dark .text-slate-600,
+        .studybuddy-dark .text-slate-500,
+        .studybuddy-dark .text-slate-400 {
+          color: #cbd5e1 !important;
+        }
+        .studybuddy-dark [class*="text-slate-"] {
+          color: #e2e8f0 !important;
+        }
+        .studybuddy-dark [class*="text-slate-950"],
+        .studybuddy-dark [class*="text-slate-900"],
+        .studybuddy-dark [class*="text-slate-800"],
+        .studybuddy-dark [class*="text-slate-700"] {
+          color: #f8fafc !important;
+        }
+        .studybuddy-dark [class*="bg-slate-50"],
+        .studybuddy-dark [class*="bg-slate-100"],
+        .studybuddy-dark [class*="bg-slate-200"] {
+          background-color: #334155 !important;
+        }
+        .studybuddy-dark [class*="bg-slate-50"] {
+          background-color: #1e293b !important;
+        }
+        .studybuddy-dark h1,
+        .studybuddy-dark h2,
+        .studybuddy-dark h3,
+        .studybuddy-dark h4,
+        .studybuddy-dark p,
+        .studybuddy-dark label {
+          color: #f8fafc;
+        }
+        .studybuddy-dark .border-slate-100,
+        .studybuddy-dark .border-slate-200,
+        .studybuddy-dark .border-slate-300 {
+          border-color: #475569 !important;
+        }
+        .studybuddy-dark input,
+        .studybuddy-dark textarea,
+        .studybuddy-dark select {
+          color: #f8fafc;
+          color-scheme: dark;
+        }
+        .studybuddy-dark input::placeholder,
+        .studybuddy-dark textarea::placeholder {
+          color: #94a3b8;
+        }
         .studybuddy-app-frame { width: 100%; max-width: 480px; min-height: 0; height: 100dvh; flex: none; }
         @media (min-width: 640px) {
           .studybuddy-app-frame {
@@ -2344,50 +2272,19 @@ export default function App() {
       `}</style>
 
       {/* Frame มือถือ พร้อมระบบเปิดไฟปิดไฟ */}
-      <div className={`studybuddy-app-frame max-w-4xl bg-[#F8FAFC] rounded-none sm:rounded-[40px] shadow-2xl border-0 sm:border-[6px] border-slate-800 overflow-hidden flex flex-col relative transition-all duration-300 ${!user && isSparking ? 'ring-4 ring-amber-400 scale-[0.998]' : ''
+      <div className={`studybuddy-app-frame max-w-4xl rounded-none sm:rounded-[40px] shadow-2xl border-0 sm:border-[6px] overflow-hidden flex flex-col relative transition-all duration-300 ${isLightsOff ? 'studybuddy-dark bg-slate-950 border-slate-950' : 'bg-[#F8FAFC] border-slate-800'} ${!user && isSparking ? 'ring-4 ring-amber-400 scale-[0.998]' : ''
         }`}>
 
-        {!user && authMode === 'login' && (
-          <>
-            {/* Floating Controls: ปุ่มเปิด-ปิดไฟ & เปลี่ยนธีมสี */}
-            <div className="absolute top-4 right-4 z-40 flex items-center gap-1.5">
-              <button
-                onClick={() => setShowColorPicker(!showColorPicker)}
-                className="p-1.5 rounded-full bg-white/20 backdrop-blur-md border border-white/30 text-white hover:bg-white/30 shadow-md transition-all"
-                title="เปลี่ยนธีมสี"
-              >
-                <Palette className="w-4 h-4 text-amber-300" />
-              </button>
-
-              <button
-                onClick={handleToggleLights}
-                className={`p-1.5 rounded-full backdrop-blur-md border border-white/30 text-white shadow-md transition-all flex items-center gap-1 ${isLightsOff ? 'bg-amber-500/80 hover:bg-amber-500' : 'bg-slate-800/60 hover:bg-slate-800'
-                  }`}
-                title={isLightsOff ? 'เปิดไฟ' : 'ปิดไฟ (Dark Lounge Mode)'}
-              >
-                {isLightsOff ? <Sun className="w-4 h-4 text-amber-100" /> : <Moon className="w-4 h-4 text-slate-200" />}
-                <Zap className={`w-3 h-3 ${isSparking ? 'text-amber-300 animate-bounce' : 'text-slate-400'}`} />
-              </button>
-            </div>
-
-            {/* Color Picker Modal Box */}
-            {showColorPicker && (
-              <div className="absolute top-14 right-4 z-50 bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-2xl p-2.5 shadow-2xl flex flex-col gap-1.5">
-                <span className="text-[10px] font-bold text-slate-400 px-1">เลือกโทนสีธีม:</span>
-                <div className="flex gap-2">
-                  {Object.keys(themePresets).map((tKey) => (
-                    <button
-                      key={tKey}
-                      onClick={() => { setSelectedTheme(tKey); setShowColorPicker(false); }}
-                      className={`w-6 h-6 rounded-full border-2 transition-transform hover:scale-110 ${themePresets[tKey].dotBg} ${selectedTheme === tKey ? 'border-white ring-2 ring-white/50' : 'border-transparent'
-                        }`}
-                      title={themePresets[tKey].name}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
+        {!user && (
+          <button
+            type="button"
+            onClick={handleToggleLights}
+            className={`absolute top-4 right-4 z-40 p-2 rounded-full backdrop-blur-md border border-white/30 text-white shadow-md transition-all ${isLightsOff ? 'bg-amber-500/80 hover:bg-amber-500' : 'bg-slate-800/60 hover:bg-slate-800'}`}
+            title={isLightsOff ? 'เปลี่ยนเป็นโหมดสว่าง' : 'เปลี่ยนเป็นโหมดมืด'}
+            aria-label={isLightsOff ? 'เปลี่ยนเป็นโหมดสว่าง' : 'เปลี่ยนเป็นโหมดมืด'}
+          >
+            {isLightsOff ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
         )}
 
         {actionToast && (
@@ -2515,7 +2412,7 @@ export default function App() {
                       <div key={m.id} className="bg-indigo-50/50 p-2.5 rounded-2xl border border-indigo-200 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <img src={m.user_avatar || cartoonAvatars[0].url} className="w-8 h-8 rounded-full border object-cover bg-indigo-50" />
-                          <div><h4 className="font-bold text-xs text-slate-900">{m.user_name}</h4><p className="text-[9px] text-indigo-600 font-bold">รออนุมัติ</p></div>
+                          <div><div className="flex items-center gap-1.5"><h4 className="font-bold text-xs text-slate-900">{m.user_name}</h4><GenderBadge gender={m.gender} /></div><p className="text-[9px] text-indigo-600 font-bold">รออนุมัติ</p></div>
                         </div>
                         {isHost(selectedGroup) ? (
                           <div className="flex gap-1.5 shrink-0">
@@ -2533,7 +2430,7 @@ export default function App() {
                   {groupMembers.filter(m => m.status === 'accepted').map(m => (
                     <div key={m.id} className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100 flex items-center gap-2">
                       <img src={m.user_avatar || cartoonAvatars[0].url} className="w-8 h-8 rounded-full border object-cover bg-indigo-50" />
-                      <div><h4 className="font-bold text-xs text-slate-900">{m.user_name}</h4><p className="text-[9px] text-emerald-600 font-bold">● สมาชิกอนุมัติแล้ว</p></div>
+                      <div><div className="flex items-center gap-1.5"><h4 className="font-bold text-xs text-slate-900">{m.user_name}</h4><GenderBadge gender={m.gender} /></div><p className="text-[9px] text-emerald-600 font-bold">● สมาชิกอนุมัติแล้ว</p></div>
                     </div>
                   ))}
                 </div>
@@ -2560,7 +2457,7 @@ export default function App() {
               </div>
               <div className="bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 flex items-center gap-2">
                 <Search className="w-4 h-4 text-slate-400" />
-                <input type="text" value={friendSearchTerm} onChange={(e) => setFriendSearchTerm(e.target.value)} placeholder="พิมพ์ชื่อเพื่อน หรืออีเมล SPU..." className="w-full text-xs outline-none bg-transparent" autoFocus />
+                <input type="text" value={friendSearchTerm} onChange={(e) => setFriendSearchTerm(e.target.value)} placeholder="พิมพ์ชื่อเพื่อน..." className="w-full text-xs outline-none bg-transparent" autoFocus />
               </div>
               <div className="flex-1 overflow-y-auto overscroll-contain space-y-2 no-scrollbar text-xs">
                 {friendSearchTerm.trim() !== '' ? (
@@ -2570,7 +2467,7 @@ export default function App() {
                     const isPendingSent = sentFriendRequests.some(r => r.receiver_id === u.id);
                     return (
                       <div key={u.id} className="bg-white p-2.5 rounded-2xl border border-slate-100 flex items-center justify-between">
-                        <div className="flex items-center gap-2.5"><img src={u.avatar} className="w-8 h-8 rounded-full object-cover border border-slate-200 bg-indigo-50" /><div><h4 className="font-bold text-xs text-slate-900">{u.name}</h4><p className="text-[9px] text-slate-400">{u.faculty}</p></div></div>
+                        <div className="flex items-center gap-2.5"><img src={u.avatar} className="w-8 h-8 rounded-full object-cover border border-slate-200 bg-indigo-50" /><div><div className="flex items-center gap-1.5"><h4 className="font-bold text-xs text-slate-900">{u.name}</h4><GenderBadge gender={u.gender} /></div><p className="text-[9px] text-slate-400">{u.faculty}</p></div></div>
                         {isAccepted ? (
                           <div className="flex items-center gap-1.5">
                             <button onClick={() => handleOpenPrivateChat(u)} className="bg-[#4338CA] text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 hover:bg-indigo-700"><MessageCircle className="w-3 h-3" /> ทักแชต</button>
@@ -2595,12 +2492,12 @@ export default function App() {
                 ) : (
                   acceptedFriends.map((f) => (
                     <div key={f.id} className="bg-slate-50 border border-slate-100 p-2.5 rounded-2xl flex items-center justify-between">
-                      <div onClick={() => handleOpenPrivateChat({ id: f.id, name: f.display_name || f.email.split('@')[0], avatar: f.avatar })} className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0 pr-2">
+                      <div onClick={() => handleOpenPrivateChat({ id: f.id, name: f.display_name || f.email.split('@')[0], avatar: f.avatar, gender: f.gender })} className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0 pr-2">
                         <img src={f.avatar || cartoonAvatars[0].url} className="w-8 h-8 rounded-full object-cover border border-slate-200 bg-indigo-50" />
                         <div className="truncate"><h4 className="font-bold text-xs text-slate-900 truncate">{(f.display_name || f.email.split('@')[0]).replace(/\s*\(นักศึกษา SPU\)/g, '')}</h4><p className="text-[9px] text-emerald-600 font-bold">● พร้อมแชต</p></div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <button onClick={() => handleOpenPrivateChat({ id: f.id, name: f.display_name || f.email.split('@')[0], avatar: f.avatar })} className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1"><MessageCircle className="w-3.5 h-3.5" /> ทักแชต</button>
+                        <button onClick={() => handleOpenPrivateChat({ id: f.id, name: f.display_name || f.email.split('@')[0], avatar: f.avatar, gender: f.gender })} className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1"><MessageCircle className="w-3.5 h-3.5" /> ทักแชต</button>
                         <button onClick={() => handleUnfriend(f.id)} className="flex items-center gap-0.5 text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-1.5 rounded-lg transition" title="ลบเพื่อน"><UserMinus className="w-3.5 h-3.5" /> ลบเพื่อน</button>
                       </div>
                     </div>
@@ -2614,12 +2511,7 @@ export default function App() {
         {/* AUTH SCREEN */}
         {!user ? (
           <div
-            onMouseMove={handleMouseMove}
-            onMouseLeave={() => {
-              mouseTrackingRef.current.active = false;
-              if (customCursorRef.current) customCursorRef.current.style.opacity = '0';
-            }}
-            className={`flex-1 min-h-0 flex flex-col overflow-y-auto overscroll-contain no-scrollbar relative transition-colors duration-500 cursor-none ${isLightsOff
+            className={`flex-1 min-h-0 flex flex-col overflow-y-auto overscroll-contain no-scrollbar relative transition-colors duration-500 ${isLightsOff
               ? `bg-gradient-to-b ${currentThemeObj.bg}`
               : 'bg-[#F8FAFC]'
               }`}
@@ -2629,26 +2521,6 @@ export default function App() {
               className="absolute inset-0 pointer-events-none z-0 opacity-80"
             />
 
-            <canvas
-              ref={starfallCanvasRef}
-              className="absolute inset-0 pointer-events-none z-10"
-            />
-
-            <div
-              ref={customCursorRef}
-              aria-hidden="true"
-              className="absolute left-0 top-0 z-20 h-7 w-7 rounded-full border border-white/80 pointer-events-none opacity-0"
-              style={{
-                willChange: 'transform',
-                boxShadow: `0 0 18px rgba(${currentThemeObj.particleColor}, 0.8), inset 0 0 8px rgba(${currentThemeObj.particleColor}, 0.25)`,
-                transition: 'opacity 150ms ease'
-              }}
-            >
-              <span
-                className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white"
-                style={{ boxShadow: `0 0 8px rgba(${currentThemeObj.particleColor}, 1)` }}
-              />
-            </div>
 
             <div className={`pt-10 pb-8 px-6 text-white text-center relative overflow-hidden rounded-b-[36px] shadow-lg shrink-0 transition-all duration-500 z-10 ${isLightsOff
               ? 'bg-slate-900/40 backdrop-blur-md border-b border-white/10'
@@ -2732,7 +2604,7 @@ export default function App() {
                           value={displayName}
                           onChange={(e) => setDisplayName(e.target.value)}
                           placeholder="เช่น ชื่อเล่นที่ใช้แสดง"
-                          className="w-full text-sm outline-none bg-transparent cursor-none"
+                          className="w-full text-sm outline-none bg-transparent"
                         />
                       </div>
                     </div>
@@ -2753,7 +2625,7 @@ export default function App() {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="กรอกอีเมลของคุณ"
-                        className="w-full text-sm outline-none bg-transparent cursor-none"
+                        className="w-full text-sm outline-none bg-transparent"
                         required
                       />
                     </div>
@@ -2774,7 +2646,7 @@ export default function App() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="w-full text-sm outline-none bg-transparent cursor-none"
+                        className="w-full text-sm outline-none bg-transparent"
                         required
                       />
                     </div>
@@ -2783,7 +2655,7 @@ export default function App() {
                   <button
                     type="submit"
                     disabled={authLoading}
-                    className={`w-full text-white font-bold py-3.5 rounded-2xl text-sm shadow-md transition-all flex items-center justify-center gap-1.5 mt-4 disabled:opacity-70 cursor-none ${isLightsOff
+                    className={`w-full text-white font-bold py-3.5 rounded-2xl text-sm shadow-md transition-all flex items-center justify-center gap-1.5 mt-4 disabled:opacity-70 ${isLightsOff
                       ? currentThemeObj.primaryBtn
                       : 'bg-[#4338CA] hover:bg-indigo-700 shadow-indigo-600/20'
                       }`}
@@ -2817,7 +2689,7 @@ export default function App() {
                   onClick={handleGoogleAuth}
                   disabled={authLoading}
                   aria-label={authMode === 'login' ? 'เข้าสู่ระบบด้วย Google' : 'สมัครสมาชิกด้วย Google'}
-                  className={`w-full flex items-center justify-center gap-2.5 rounded-2xl border py-3.5 text-sm font-bold transition-colors disabled:opacity-60 cursor-none ${isLightsOff
+                  className={`w-full flex items-center justify-center gap-2.5 rounded-2xl border py-3.5 text-sm font-bold transition-colors disabled:opacity-60 ${isLightsOff
                     ? 'border-slate-700 bg-slate-900/70 text-white hover:bg-slate-800'
                     : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                     }`}
@@ -2865,12 +2737,21 @@ export default function App() {
           <>
             {/* TOP HEADER */}
             {currentTab !== 'room_chat' && currentTab !== 'private_chat' && (
-              <div className="bg-white px-5 pt-6 pb-3 flex items-center justify-between border-b border-slate-100 shrink-0 z-20">
+              <div className={`px-5 pt-6 pb-3 flex items-center justify-between border-b shrink-0 z-20 transition-colors ${isLightsOff ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
                 <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setCurrentTab('home')}>
                   <div className="w-6 h-6 rounded-md bg-indigo-600 flex items-center justify-center text-white font-black text-xs">S</div>
                   <span className="font-bold text-lg text-[#4F46E5]">StudyBuddy</span>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleToggleLights}
+                    className={`p-1.5 rounded-full border transition-colors ${isLightsOff ? 'bg-slate-800 border-slate-700 text-amber-300 hover:bg-slate-700' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}
+                    title={isLightsOff ? 'เปลี่ยนเป็นโหมดสว่าง' : 'เปลี่ยนเป็นโหมดมืด'}
+                    aria-label={isLightsOff ? 'เปลี่ยนเป็นโหมดสว่าง' : 'เปลี่ยนเป็นโหมดมืด'}
+                  >
+                    {isLightsOff ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                  </button>
                   <button onClick={() => setShowQuickFriendModal(true)} className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-full border border-indigo-100 bg-indigo-50/50"><UserPlus className="w-5 h-5" /></button>
                   <button onClick={() => setCurrentTab('my_groups')} className={`p-1.5 rounded-full relative ${currentTab === 'my_groups' ? 'bg-indigo-100 text-indigo-600' : 'text-slate-600 hover:bg-slate-100'}`}>
                     <MessageCircle className="w-5 h-5" />
@@ -3005,7 +2886,7 @@ export default function App() {
                       const isPendingSent = sentFriendRequests.some(r => r.receiver_id === u.id);
                       return (
                         <div key={u.id} className="bg-white p-2.5 rounded-2xl border border-slate-100 flex items-center justify-between">
-                          <div className="flex items-center gap-2.5"><img src={u.avatar} className="w-8 h-8 rounded-full object-cover border border-slate-200 bg-indigo-50" /><div><h4 className="font-bold text-xs text-slate-900">{u.name}</h4><p className="text-[9px] text-slate-400">{u.faculty}</p></div></div>
+                          <div className="flex items-center gap-2.5"><img src={u.avatar} className="w-8 h-8 rounded-full object-cover border border-slate-200 bg-indigo-50" /><div><div className="flex items-center gap-1.5"><h4 className="font-bold text-xs text-slate-900">{u.name}</h4><GenderBadge gender={u.gender} /></div><p className="text-[9px] text-slate-400">{u.faculty}</p></div></div>
                           {isAccepted ? (
                             <div className="flex items-center gap-1.5">
                               <button onClick={() => handleOpenPrivateChat(u)} className="bg-[#4338CA] text-white text-[9px] font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 hover:bg-indigo-700"><MessageCircle className="w-3 h-3" /> ทักแชต</button>
@@ -3247,7 +3128,7 @@ export default function App() {
                       <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white"></span>
                     </div>
                     <div className="min-w-0">
-                      <h2 className="font-bold text-slate-900 text-xs leading-tight truncate">{activePrivateMember.name}</h2>
+                      <div className="flex items-center gap-1.5"><h2 className="font-bold text-slate-900 text-xs leading-tight truncate">{activePrivateMember.name}</h2><GenderBadge gender={activePrivateMember.gender} /></div>
                       <span className="text-[9px] text-emerald-600 font-bold flex items-center gap-1">● ออนไลน์</span>
                     </div>
                   </div>
@@ -3502,7 +3383,17 @@ export default function App() {
                         <option value="13:00 - 15:00 น.">13:00 - 15:00 น.</option>
                         <option value="15:00 - 17:00 น.">15:00 - 17:00 น.</option>
                         <option value="17:00 - 19:00 น.">17:00 - 19:00 น.</option>
+                        <option value="__custom__">กำหนดเอง (ระบุเวลาเอง)</option>
                       </select>
+                      {groupTime === '__custom__' && (
+                        <input
+                          type="text"
+                          value={customGroupTime}
+                          onChange={(e) => setCustomGroupTime(e.target.value)}
+                          placeholder="ระบุเวลา เช่น 18:30 - 20:30 น."
+                          className="w-full bg-white border border-slate-200 rounded-2xl p-2.5 text-xs mt-2 outline-none"
+                        />
+                      )}
                     </div>
                   </div>
 
