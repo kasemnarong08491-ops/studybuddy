@@ -10,6 +10,38 @@ begin;
 alter table public.friend_requests replica identity full;
 alter table public.direct_messages replica identity full;
 alter table public.group_members replica identity full;
+alter table public.group_messages replica identity full;
+
+-- Ensure the tables used by Realtime subscriptions are published.
+-- Run this migration if chat or notifications arrive only after a manual refresh.
+do $$
+declare
+  realtime_table text;
+begin
+  foreach realtime_table in array array[
+    'friend_requests',
+    'direct_messages',
+    'study_groups',
+    'group_members',
+    'group_messages',
+    'profiles'
+  ]
+  loop
+    if not exists (
+      select 1
+      from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = realtime_table
+    ) then
+      execute format(
+        'alter publication supabase_realtime add table public.%I',
+        realtime_table
+      );
+    end if;
+  end loop;
+end;
+$$;
 
 -- Remove duplicate join requests/memberships and prevent future duplicates.
 -- Accepted membership wins, followed by pending, rejected, and unknown status.

@@ -247,6 +247,7 @@ export default function App() {
   const friendRequestPartnerRef = useRef(new window.Map());
   const friendSyncChannelRef = useRef(null);
   const groupMembershipStatusRef = useRef(new window.Map());
+  const fallbackGroupToastIdsRef = useRef(new window.Set());
   const actionToastTimerRef = useRef(null);
   const avatarFileInputRef = useRef(null);
 
@@ -1002,13 +1003,102 @@ export default function App() {
 
   useEffect(() => { fetchFriendStatus(); }, [user]);
 
+  const syncLatestGroupMessages = async () => {
+    if (!user?.id) return;
+
+    const { data: messages, error } = await supabase
+      .from('group_messages')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (error || !Array.isArray(messages)) return;
+
+    const latestByGroup = new window.Map();
+    messages.forEach(message => {
+      const groupId = String(message.group_id);
+      if (!latestByGroup.has(groupId)) latestByGroup.set(groupId, message);
+    });
+
+    latestByGroup.forEach(message => {
+      const senderId = message.user_id ?? message.sender_id;
+      const isFromMe = (senderId != null && String(senderId) === String(user.id))
+        || message.sender_name === currentUser.name;
+      if (isFromMe) return;
+
+      const messageId = String(message.id);
+      if (readMessageIdsRef.current.has(messageId)) return;
+
+      const inRoom = currentTab === 'room_chat'
+        && String(selectedGroup?.id) === String(message.group_id);
+      if (inRoom) {
+        markMessageAsRead(messageId);
+        return;
+      }
+
+      const senderName = message.sender_name || 'สมาชิก';
+      const cleanText = message.text?.startsWith('[IMAGE]:')
+        ? '[รูปภาพ]'
+        : (message.text || '');
+      const group = studyGroups.find(item => String(item.id) === String(message.group_id));
+      const senderKey = `group-msg-${message.group_id}-${messageId}`;
+
+      setRecentGroupMessages(prev => ({
+        ...prev,
+        [message.group_id]: {
+          text: `${senderName}: ${cleanText}`,
+          time: formatTime(message.created_at),
+          unread: true,
+          timestamp: new Date(message.created_at).getTime() || Date.now()
+        }
+      }));
+
+      setNotifications(prev => {
+        if (prev.some(notification => notification.senderKey === senderKey)) return prev;
+        return [{
+          id: senderKey,
+          senderKey,
+          title: `ข้อความใหม่ในกลุ่ม${group?.title ? ` "${group.title}"` : ''}`,
+          desc: `${senderName}: ${cleanText}`,
+          time: formatTime(message.created_at) || '',
+          read: false,
+          type: 'group',
+          groupId: message.group_id,
+          groupObj: group || null,
+          senderAvatar: message.sender_avatar || '',
+          senderName
+        }, ...prev].slice(0, 15);
+      });
+
+      if (!fallbackGroupToastIdsRef.current.has(messageId)) {
+        fallbackGroupToastIdsRef.current.add(messageId);
+        showToast(
+          senderKey,
+          `ข้อความใหม่ในกลุ่ม${group?.title ? ` "${group.title}"` : ''}`,
+          `${senderName}: ${cleanText}`,
+          {
+            type: 'group',
+            groupId: message.group_id,
+            groupObj: group || null,
+            senderAvatar: message.sender_avatar || '',
+            senderName
+          }
+        );
+      }
+
+      setHasUnreadNotification(true);
+    });
+  };
+
   useEffect(() => {
     if (!user?.id) return;
     syncMyGroupMembershipResults();
+    syncLatestGroupMessages();
     const friendSyncInterval = window.setInterval(() => {
       fetchFriendStatus();
       fetchAllPendingRequestsForHost();
       syncMyGroupMembershipResults();
+      syncLatestGroupMessages();
     }, 5000);
     return () => window.clearInterval(friendSyncInterval);
   }, [user?.id]);
@@ -1219,8 +1309,13 @@ export default function App() {
   // GLOBAL REALTIME HUB
   useEffect(() => {
     if (!user?.id) return;
-    const globalChannel = supabase.channel('global-app-realtime-hub-fixed-v9')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, async (payload) => {
+    const globalChannel = supabase.channel(`global-app-realtime-hub-${user.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'direct_messages',
+        filter: `receiver_id=eq.${user.id}`
+      }, async (payload) => {
         const newMsg = payload.new;
         const isFromMe = newMsg.sender_id === user.id;
         const targetFriendId = isFromMe ? newMsg.receiver_id : newMsg.sender_id;
@@ -1257,8 +1352,7 @@ export default function App() {
         }));
 
         if (shouldMarkUnread) {
-          const senderProfile = acceptedFriends.find(f => f.id === newMsg.sender_id);
-          const realAvatar = newMsg.sender_avatar || senderProfile?.avatar || cartoonAvatars[0].url;
+          const realAvatar = newMsg.sender_avatar || cartoonAvatars[0].url;
           showToast(`dm-${newMsg.sender_id}`, `💬 ข้อความใหม่จาก ${newMsg.sender_name}`, cleanText, { type: 'dm', targetUser: { id: newMsg.sender_id, name: newMsg.sender_name, avatar: realAvatar } });
         }
       })
@@ -1427,15 +1521,26 @@ export default function App() {
           }
         }
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_messages' }, (payload) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_messages' }, async (payload) => {
         const gMsg = payload.new;
         if (!gMsg) return;
         const inRoom = currentTab === 'room_chat' && String(selectedGroup?.id) === String(gMsg.group_id);
         const senderId = gMsg.user_id ?? gMsg.sender_id;
         const isFromMe = (senderId != null && String(senderId) === String(user.id)) || gMsg.sender_name === currentUser.name;
         const cleanText = gMsg.text?.startsWith('[IMAGE]:') ? '[รูปภาพ]' : (gMsg.text || '');
-        const isMemberOfGroup = myJoinedGroupIds.some(id => String(id) === String(gMsg.group_id))
+        let isMemberOfGroup = myJoinedGroupIds.some(id => String(id) === String(gMsg.group_id))
           || studyGroups.some(g => String(g.id) === String(gMsg.group_id) && isHost(g));
+
+        if (!isMemberOfGroup && gMsg.group_id != null) {
+          const { data: membership } = await supabase
+            .from('group_members')
+            .select('status')
+            .eq('group_id', gMsg.group_id)
+            .eq('user_id', user.id)
+            .in('status', ['accepted'])
+            .maybeSingle();
+          isMemberOfGroup = !!membership;
+        }
 
         const shouldMarkUnread = !isFromMe && !inRoom && isMemberOfGroup && !readMessageIdsRef.current.has(gMsg.id);
 
@@ -1529,10 +1634,16 @@ export default function App() {
           }
           return m;
         }));
-      }).subscribe();
+      }).subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          fetchFriendStatus();
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          fetchFriendStatus();
+        }
+      });
 
     return () => supabase.removeChannel(globalChannel);
-  }, [user, currentUser.name, currentTab, activePrivateMember, selectedGroup, studyGroups, myJoinedGroupIds, acceptedFriends]);
+  }, [user, currentUser.name, currentTab, activePrivateMember, selectedGroup, studyGroups, myJoinedGroupIds]);
 
   // Realtime Friends Search
   const activeSearchQuery = friendSearchTerm || searchTerm;
@@ -1611,7 +1722,12 @@ export default function App() {
     fetchGroupData();
 
     const roomChannel = supabase.channel(`room-realtime-${selectedGroup.id}-${Date.now()}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_messages' }, (payload) => {
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'group_messages',
+        filter: `group_id=eq.${selectedGroup.id}`
+      }, (payload) => {
         const newMsg = payload.new;
         if (String(newMsg.group_id) === String(selectedGroup.id)) {
           handleIncomingRoomMessage(newMsg);
@@ -1624,6 +1740,8 @@ export default function App() {
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
+          fetchGroupData();
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           fetchGroupData();
         }
       });
@@ -1653,7 +1771,11 @@ export default function App() {
     fetchDMs();
 
     const dmChannel = supabase.channel(`direct-messages-realtime-${user.id}-${activePrivateMember.id}-${Date.now()}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'direct_messages' }, (payload) => {
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'direct_messages'
+      }, (payload) => {
         if (!isActive) return;
         const newMsg = payload.new;
         if ((newMsg.sender_id === user.id && newMsg.receiver_id === activePrivateMember.id) ||
@@ -1666,7 +1788,13 @@ export default function App() {
           setTimeout(() => scrollToBottom(true, privateChatContainerRef), 20);
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          fetchDMs();
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          fetchDMs();
+        }
+      });
 
     return () => {
       isActive = false;
