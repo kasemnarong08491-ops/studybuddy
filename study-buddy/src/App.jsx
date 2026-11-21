@@ -477,7 +477,8 @@ export default function App() {
       setTimeout(() => scrollToBottom(false, roomChatContainerRef), 30);
       if (selectedGroup?.id) {
         setNotifications(prev => prev.map(n =>
-          (n.type === 'group' && String(n.groupId) === String(selectedGroup.id))
+          ((n.type === 'group' || n.type === 'join_request')
+            && String(n.groupId) === String(selectedGroup.id))
             ? { ...n, read: true }
             : n
         ));
@@ -1041,7 +1042,7 @@ export default function App() {
         ? '[รูปภาพ]'
         : (message.text || '');
       const group = studyGroups.find(item => String(item.id) === String(message.group_id));
-      const senderKey = `group-msg-${message.group_id}-${messageId}`;
+      const senderKey = `group-msg-${message.group_id}`;
 
       setRecentGroupMessages(prev => ({
         ...prev,
@@ -1054,7 +1055,13 @@ export default function App() {
       }));
 
       setNotifications(prev => {
-        if (prev.some(notification => notification.senderKey === senderKey)) return prev;
+        const withoutOldGroupMessages = prev.filter(notification =>
+          !(String(notification.groupId) === String(message.group_id)
+            && (
+              notification.senderKey === senderKey
+              || String(notification.senderKey || '').startsWith(`group-msg-${message.group_id}-`)
+            ))
+        );
         return [{
           id: senderKey,
           senderKey,
@@ -1067,7 +1074,7 @@ export default function App() {
           groupObj: group || null,
           senderAvatar: message.sender_avatar || '',
           senderName
-        }, ...prev].slice(0, 15);
+        }, ...withoutOldGroupMessages].slice(0, 15);
       });
 
       if (!fallbackGroupToastIdsRef.current.has(messageId)) {
