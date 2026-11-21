@@ -244,12 +244,25 @@ export default function App() {
   const privateChatContainerRef = useRef(null);
   const homeSearchInputRef = useRef(null);
   const readMessageIdsRef = useRef(new Set(JSON.parse(localStorage.getItem('read_msg_ids') || '[]')));
+  const readNotificationKeysRef = useRef(new window.Set(
+    JSON.parse(localStorage.getItem('read_notification_keys') || '[]')
+  ));
   const friendRequestPartnerRef = useRef(new window.Map());
   const friendSyncChannelRef = useRef(null);
   const groupMembershipStatusRef = useRef(new window.Map());
   const fallbackGroupToastIdsRef = useRef(new window.Set());
+  const currentTabRef = useRef('home');
+  const selectedGroupRef = useRef(null);
   const actionToastTimerRef = useRef(null);
   const avatarFileInputRef = useRef(null);
+
+  useEffect(() => {
+    currentTabRef.current = currentTab;
+  }, [currentTab]);
+
+  useEffect(() => {
+    selectedGroupRef.current = selectedGroup;
+  }, [selectedGroup]);
 
   const notifyUser = (message, type = null) => {
     const messageText = String(message);
@@ -390,7 +403,77 @@ export default function App() {
     if (!msgId) return;
     readMessageIdsRef.current.add(msgId);
     localStorage.setItem('read_msg_ids', JSON.stringify(Array.from(readMessageIdsRef.current)));
+    friendSyncChannelRef.current?.postMessage({
+      type: 'message_read',
+      messageId: String(msgId)
+    });
   };
+
+  const markNotificationRead = (senderKey, extraKeys = []) => {
+    if (!senderKey && (!extraKeys || extraKeys.length === 0)) return;
+    const keys = [senderKey, ...extraKeys].filter(Boolean).map(String);
+    keys.forEach(key => readNotificationKeysRef.current.add(key));
+    localStorage.setItem(
+      'read_notification_keys',
+      JSON.stringify(Array.from(readNotificationKeysRef.current))
+    );
+    setNotifications(prev => {
+      const updated = prev.map(item =>
+        keys.includes(String(item.senderKey))
+          || extraKeys.some(key => String(key) === String(item.senderKey))
+          ? { ...item, read: true }
+          : item
+      );
+      setHasUnreadNotification(updated.some(item => !item.read));
+      return updated;
+    });
+  };
+
+  const markNotificationsReadByPredicate = (predicate) => {
+    setNotifications(prev => {
+      let changed = false;
+      const updated = prev.map(item => {
+        if (!predicate(item) || item.read) return item;
+        changed = true;
+        if (item.senderKey) readNotificationKeysRef.current.add(String(item.senderKey));
+        return { ...item, read: true };
+      });
+      if (changed) {
+        localStorage.setItem(
+          'read_notification_keys',
+          JSON.stringify(Array.from(readNotificationKeysRef.current))
+        );
+      }
+      setHasUnreadNotification(updated.some(item => !item.read));
+      return updated;
+    });
+  };
+
+  useEffect(() => {
+    const syncReadIdsFromStorage = (event) => {
+      if (event.key === 'read_msg_ids') {
+        try {
+          const ids = JSON.parse(event.newValue || '[]');
+          readMessageIdsRef.current = new window.Set(Array.isArray(ids) ? ids : []);
+        } catch {
+          readMessageIdsRef.current = new window.Set();
+        }
+      }
+      if (event.key === 'read_notification_keys') {
+        try {
+          const keys = JSON.parse(event.newValue || '[]');
+          readNotificationKeysRef.current = new window.Set(Array.isArray(keys) ? keys : []);
+          setNotifications(prev => prev.map(item =>
+            item.senderKey && readNotificationKeysRef.current.has(String(item.senderKey))
+              ? { ...item, read: true }
+              : item
+          ));
+        } catch { }
+      }
+    };
+    window.addEventListener('storage', syncReadIdsFromStorage);
+    return () => window.removeEventListener('storage', syncReadIdsFromStorage);
+  }, []);
 
   const handleIncomingRoomMessage = (message) => {
     const isOwnMessage = message.sender_name === currentUser.name;
@@ -447,6 +530,21 @@ export default function App() {
     );
   };
 
+  const getActiveMemberCount = (members, group) => {
+    if (!group) return 1;
+    const acceptedUserIds = new window.Set();
+
+    (members || []).forEach(member => {
+      if (member?.status !== 'accepted') return;
+      const memberId = member.user_id != null ? String(member.user_id) : '';
+      const hostId = group.host_id != null ? String(group.host_id) : '';
+      if (memberId && memberId === hostId) return;
+      if (memberId) acceptedUserIds.add(memberId);
+    });
+
+    return acceptedUserIds.size + 1;
+  };
+
   const scrollToBottom = (force = false, containerRef = null) => {
     if (!containerRef?.current) {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -501,7 +599,28 @@ export default function App() {
       }
       setGroupsLoadError('');
       if (data) {
-        setStudyGroups(data);
+        const { data: membershipRows } = await supabase
+          .from('group_members')
+          .select('group_id,user_id,status');
+        const membersByGroup = new window.Map();
+        (membershipRows || []).forEach(member => {
+          if (!member?.group_id || member.status !== 'accepted') return;
+          const groupId = String(member.group_id);
+          if (!membersByGroup.has(groupId)) membersByGroup.set(groupId, []);
+          membersByGroup.get(groupId).push(member);
+        });
+
+        const normalizedGroups = data.map(group => {
+          const members = membersByGroup.get(String(group.id)) || [];
+          const actualCount = getActiveMemberCount(members, group);
+          return { ...group, current_members: actualCount };
+        });
+        setStudyGroups(normalizedGroups);
+        setSelectedGroup(prev => {
+          if (!prev) return prev;
+          const normalized = normalizedGroups.find(group => String(group.id) === String(prev.id));
+          return normalized ? { ...prev, ...normalized } : prev;
+        });
 
         const userName = currentUser?.name;
         const userId = user?.id;
@@ -751,7 +870,7 @@ export default function App() {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
           setNotifications(parsed);
-          const hasUnread = parsed.some(n => !n.read && (n.type !== 'join_request' || !n.isHandled));
+          const hasUnread = parsed.some(n => !n.read);
           setHasUnreadNotification(hasUnread);
         }
       }
@@ -764,7 +883,7 @@ export default function App() {
     if (!user?.id) return;
     try {
       localStorage.setItem(`study_buddy_notifications_${user.id}`, JSON.stringify(notifications));
-      const hasUnread = notifications.some(n => !n.read && (n.type !== 'join_request' || !n.isHandled));
+      const hasUnread = notifications.some(n => !n.read);
       setHasUnreadNotification(hasUnread);
     } catch (e) {
       console.warn('Failed to save notifications to localStorage:', e);
@@ -776,6 +895,14 @@ export default function App() {
   }, [user?.id, user?.email, studyGroups]);
 
   const showToast = (senderKey, title, message, notificationMeta = {}) => {
+    const isAlreadyRead = readNotificationKeysRef.current.has(String(senderKey));
+    if (isAlreadyRead) {
+      setNotifications(prev => prev.map(item =>
+        item.senderKey === senderKey ? { ...item, read: true } : item
+      ));
+      setToastNotification(null);
+      return;
+    }
     playNotificationSound();
     setToastNotification({ title, message, ...notificationMeta });
     setHasUnreadNotification(true);
@@ -877,13 +1004,14 @@ export default function App() {
       pendingReceived.forEach(req => {
         const senderKey = `friend-req-${req.id}`;
         if (!updated.some(n => n.senderKey === senderKey || String(n.requestId) === String(req.id))) {
+          const isAlreadyRead = readNotificationKeysRef.current.has(senderKey);
           updated.unshift({
             id: `freq-${req.id}`,
             senderKey,
             title: 'มีคำขอเป็นเพื่อนใหม่',
             desc: `${req.sender_name || 'ผู้ใช้'} ส่งคำขอมาเป็นเพื่อนกับคุณ`,
             time: formatTime(req.created_at) || '',
-            read: false,
+            read: isAlreadyRead,
             type: 'friend_request',
             requestId: req.id
           });
@@ -961,7 +1089,10 @@ export default function App() {
       latestByPartner.forEach((last, pid) => {
         const isFromMe = String(last.sender_id) === String(user.id);
         const cleanText = last.text?.startsWith('[IMAGE]:') ? '[รูปภาพ]' : (last.text || '');
-        const isAlreadyRead = readMessageIdsRef.current.has(last.id) || isFromMe;
+        const dmKey = `dm-${pid}`;
+        const isAlreadyRead = readMessageIdsRef.current.has(last.id)
+          || isFromMe
+          || readNotificationKeysRef.current.has(dmKey);
         next[pid] = {
           text: isFromMe ? `คุณ: ${cleanText}` : cleanText,
           time: formatTime(last.created_at),
@@ -978,9 +1109,11 @@ export default function App() {
         const profile = profileById.get(String(pid)) || partners.find(p => String(p.id) === String(pid));
         const isFromMe = String(last.sender_id) === String(user.id);
         const cleanText = last.text?.startsWith('[IMAGE]:') ? '[รูปภาพ]' : (last.text || '');
-        const isAlreadyRead = readMessageIdsRef.current.has(last.id) || isFromMe;
-        const friendDisplayName = cleanProfileName(profile?.display_name || profile?.email?.split('@')[0] || 'ผู้ใช้');
         const senderKey = `dm-${pid}`;
+        const isAlreadyRead = readMessageIdsRef.current.has(last.id)
+          || isFromMe
+          || readNotificationKeysRef.current.has(senderKey);
+        const friendDisplayName = cleanProfileName(profile?.display_name || profile?.email?.split('@')[0] || 'ผู้ใช้');
         if (!isAlreadyRead) {
           if (!updated.some(n => n.senderKey === senderKey && !n.read)) {
             updated = [{
@@ -1028,12 +1161,30 @@ export default function App() {
       if (isFromMe) return;
 
       const messageId = String(message.id);
-      if (readMessageIdsRef.current.has(messageId)) return;
+      const senderKey = `group-msg-${message.group_id}`;
+      if (readMessageIdsRef.current.has(messageId)
+        || readNotificationKeysRef.current.has(senderKey)) {
+        setRecentGroupMessages(prev => ({
+          ...prev,
+          [message.group_id]: {
+            ...prev[message.group_id],
+            unread: false
+          }
+        }));
+        return;
+      }
 
-      const inRoom = currentTab === 'room_chat'
-        && String(selectedGroup?.id) === String(message.group_id);
+      const inRoom = currentTabRef.current === 'room_chat'
+        && String(selectedGroupRef.current?.id) === String(message.group_id);
       if (inRoom) {
         markMessageAsRead(messageId);
+        setRecentGroupMessages(prev => ({
+          ...prev,
+          [message.group_id]: {
+            ...prev[message.group_id],
+            unread: false
+          }
+        }));
         return;
       }
 
@@ -1042,7 +1193,6 @@ export default function App() {
         ? '[รูปภาพ]'
         : (message.text || '');
       const group = studyGroups.find(item => String(item.id) === String(message.group_id));
-      const senderKey = `group-msg-${message.group_id}`;
 
       setRecentGroupMessages(prev => ({
         ...prev,
@@ -1119,6 +1269,56 @@ export default function App() {
     channel.onmessage = (event) => {
       const payload = event.data;
       if (!payload?.type) return;
+
+      if (payload.type === 'notifications_read_all') {
+        setNotifications(prev => {
+          const updated = prev.map(item =>
+            item.type === 'join_request' && !item.isHandled
+              ? item
+              : { ...item, read: true }
+          );
+          setHasUnreadNotification(updated.some(item => !item.read));
+          return updated;
+        });
+        setToastNotification(null);
+      }
+
+      if (payload.type === 'notification_read') {
+        setNotifications(prev => {
+          let updated = prev;
+          if (payload.notificationId) {
+            updated = updated.filter(item => item.id !== payload.notificationId);
+          }
+          if (payload.groupId) {
+            updated = updated.filter(item =>
+              !(String(item.groupId) === String(payload.groupId)
+                && (item.type === 'group' || item.type === 'join_request'))
+            );
+            setRecentGroupMessages(current => ({
+              ...current,
+              [payload.groupId]: {
+                ...current[payload.groupId],
+                unread: false
+              }
+            }));
+          }
+          if (payload.friendRequestId) {
+            updated = updated.filter(item =>
+              !(item.type === 'friend_request'
+                && String(item.requestId) === String(payload.friendRequestId))
+            );
+          }
+          if (payload.directMessageId) {
+            updated = updated.filter(item =>
+              !(item.type === 'dm'
+                && String(item.targetUser?.id) === String(payload.directMessageId))
+            );
+          }
+          setHasUnreadNotification(updated.some(item => !item.read));
+          return updated;
+        });
+        if (payload.groupId) setToastNotification(null);
+      }
 
       if (payload.type === 'group_join_request') {
         if (!payload.groupHostId) return;
@@ -1550,6 +1750,9 @@ export default function App() {
         }
 
         const shouldMarkUnread = !isFromMe && !inRoom && isMemberOfGroup && !readMessageIdsRef.current.has(gMsg.id);
+        if (inRoom && !isFromMe) {
+          markMessageAsRead(gMsg.id);
+        }
 
         if (isMemberOfGroup || inRoom || String(senderId) === String(user.id)) {
           setRecentGroupMessages(prev => ({
@@ -1694,6 +1897,8 @@ export default function App() {
   // ROOM CHAT REALTIME LISTENER
   useEffect(() => {
     if (!user?.id || !selectedGroup?.id || currentTab !== 'room_chat') return;
+    currentTabRef.current = 'room_chat';
+    selectedGroupRef.current = selectedGroup;
     setRecentGroupMessages(prev => ({ ...prev, [selectedGroup.id]: { ...prev[selectedGroup.id], unread: false } }));
     setNotifications(prev => prev.map(n =>
       (n.senderKey === `group-msg-${selectedGroup.id}` || n.senderKey === `group-${selectedGroup.id}` || (n.type === 'group' && String(n.groupId) === String(selectedGroup.id)))
@@ -1715,10 +1920,28 @@ export default function App() {
         const loadedMessages = msgs || [];
         loadedMessages.forEach(m => markMessageAsRead(m.id));
         setRoomChatMessages(loadedMessages);
+        setRecentGroupMessages(prev => ({
+          ...prev,
+          [selectedGroup.id]: {
+            ...prev[selectedGroup.id],
+            unread: false
+          }
+        }));
         setTimeout(() => scrollToBottom(true, roomChatContainerRef), 20);
 
         const { data: members } = await supabase.from('group_members').select('*').eq('group_id', selectedGroup.id);
-        if (members) setGroupMembers(members);
+        if (members) {
+          setGroupMembers(members);
+          const actualCount = getActiveMemberCount(members, selectedGroup);
+          setSelectedGroup(prev => prev && String(prev.id) === String(selectedGroup.id)
+            ? { ...prev, current_members: actualCount }
+            : prev);
+          setStudyGroups(prev => prev.map(group =>
+            String(group.id) === String(selectedGroup.id)
+              ? { ...group, current_members: actualCount }
+              : group
+          ));
+        }
       } catch (error) {
         setRoomChatLoadError(error?.message || 'โหลดข้อความไม่สำเร็จ');
       } finally {
@@ -1845,6 +2068,7 @@ export default function App() {
 
   const handleAcceptFriendRequest = async (request) => {
     if (request?.id == null) return;
+    markNotificationRead(`friend-req-${request.id}`);
     const { error } = await supabase.from('friend_requests').update({ status: 'accepted' }).eq('id', request.id);
     if (!error) {
       notifyUser(`ตอบรับคำขอจาก ${request.sender_name || 'เพื่อน'} เรียบร้อยแล้ว!`);
@@ -1884,6 +2108,7 @@ export default function App() {
   const handleRejectFriendRequest = async (requestOrId) => {
     const requestId = typeof requestOrId === 'object' && requestOrId !== null ? requestOrId.id : requestOrId;
     if (requestId == null) return;
+    markNotificationRead(`friend-req-${requestId}`);
     const { error } = await supabase.from('friend_requests').delete().eq('id', requestId);
     if (!error) {
       notifyUser('ปฏิเสธคำขอเป็นเพื่อนแล้ว');
@@ -2107,6 +2332,35 @@ export default function App() {
     }
 
     setSelectedGroup(group);
+    currentTabRef.current = 'room_chat';
+    selectedGroupRef.current = group;
+    markNotificationRead(`group-msg-${group.id}`);
+    setRecentGroupMessages(prev => ({
+      ...prev,
+      [group.id]: {
+        ...prev[group.id],
+        unread: false
+      }
+    }));
+    setNotifications(prev => prev.map(notification =>
+      String(notification.groupId) === String(group.id)
+        ? { ...notification, read: true }
+        : notification
+    ));
+    friendSyncChannelRef.current?.postMessage({
+      type: 'notification_read',
+      groupId: group.id
+    });
+    setToastNotification(current =>
+      current && String(current.groupId) === String(group.id) ? null : current
+    );
+    supabase
+      .from('group_messages')
+      .select('id')
+      .eq('group_id', group.id)
+      .then(({ data }) => {
+        (data || []).forEach(message => markMessageAsRead(message.id));
+      });
     const userId = user.id;
 
     if (isHost(group)) {
@@ -2170,23 +2424,48 @@ export default function App() {
       } else if (myMember.status === 'pending') {
         notifyUser('คำขอของคุณกำลังรอการอนุมัติจากหัวหน้ากลุ่ม');
       } else if (myMember.status === 'rejected') {
-        const { error: reapplyError } = await supabase
+        const { error: deleteError } = await supabase
           .from('group_members')
-          .update({
-            status: 'pending',
-            user_name: currentUser.name,
-            user_avatar: currentUser.avatar
-          })
-          .eq('id', myMember.id);
+          .delete()
+          .eq('id', myMember.id)
+          .eq('user_id', userId)
+          .select('id');
 
-        if (reapplyError) {
-          notifyUser('ส่งคำขอเข้าร่วมกลุ่มไม่สำเร็จ: ' + reapplyError.message);
+        if (deleteError) {
+          notifyUser('ส่งคำขอเข้าร่วมกลุ่มไม่สำเร็จ: ' + deleteError.message);
         } else {
-          notifyUser('ส่งคำขอเข้าร่วมกลุ่มใหม่เรียบร้อยแล้ว รอการอนุมัติจากหัวหน้ากลุ่ม');
-          groupMembershipStatusRef.current.set(String(group.id), {
-            status: 'pending',
-            memberId: myMember.id
-          });
+          const { data: reapplyRequest, error: reapplyError } = await supabase
+            .from('group_members')
+            .insert([{
+              group_id: group.id,
+              user_id: userId,
+              user_name: currentUser.name,
+              user_avatar: currentUser.avatar,
+              status: 'pending'
+            }])
+            .select();
+
+          if (reapplyError) {
+            notifyUser('ส่งคำขอเข้าร่วมกลุ่มใหม่ไม่สำเร็จ: ' + reapplyError.message);
+          } else {
+            notifyUser('ส่งคำขอเข้าร่วมกลุ่มใหม่เรียบร้อยแล้ว รอการอนุมัติจากหัวหน้ากลุ่ม');
+            const insertedRequest = reapplyRequest?.[0];
+            groupMembershipStatusRef.current.set(String(group.id), {
+              status: 'pending',
+              memberId: insertedRequest?.id || myMember.id
+            });
+            friendSyncChannelRef.current?.postMessage({
+              type: 'group_join_request',
+              memberId: insertedRequest?.id,
+              groupId: group.id,
+              groupTitle: group.title,
+              groupHostId: group.host_id,
+              groupHostEmail: group.host_email || null,
+              userName: currentUser.name,
+              userAvatar: currentUser.avatar
+            });
+            setTimeout(fetchAllPendingRequestsForHost, 300);
+          }
         }
       } else {
         notifyUser('ไม่สามารถเข้าร่วมกลุ่มนี้ได้ในขณะนี้');
@@ -2214,7 +2493,7 @@ export default function App() {
       setMyJoinedGroupIds(prev => prev.filter(id => String(id) !== String(group.id)));
 
       const { data: acceptedList } = await supabase.from('group_members').select('*').eq('group_id', group.id).eq('status', 'accepted');
-      const newCount = (acceptedList ? acceptedList.length : 0) + 1;
+      const newCount = getActiveMemberCount(acceptedList || [], group);
       await supabase.from('study_groups').update({ current_members: newCount }).eq('id', group.id);
       setStudyGroups(prev => prev.map(g => String(g.id) === String(group.id) ? { ...g, current_members: newCount } : g));
 
@@ -2230,6 +2509,7 @@ export default function App() {
 
   const handleApproveMember = async (memberId, status, notifId = null) => {
     if (memberId == null || !['accepted', 'rejected'].includes(status)) return;
+    markNotificationRead(`group-req-${memberId}`);
     const pendingReq = allPendingRequests.find(req => String(req.id) === String(memberId))
       || (notifId ? notifications.find(n => String(n.id) === String(notifId) || String(n.memberReqId) === String(memberId)) : null)
       || notifications.find(n => String(n.memberReqId) === String(memberId));
@@ -2276,7 +2556,7 @@ export default function App() {
         });
         if (status === 'accepted') {
           const { data: acceptedList } = await supabase.from('group_members').select('*').eq('group_id', targetGroupId).eq('status', 'accepted');
-          const newCount = (acceptedList ? acceptedList.length : 0) + 1;
+          const newCount = getActiveMemberCount(acceptedList || [], targetGroup);
           await supabase.from('study_groups').update({ current_members: newCount }).eq('id', targetGroupId);
           setSelectedGroup(prev => prev && String(prev.id) === String(targetGroupId) ? { ...prev, current_members: newCount } : prev);
           setStudyGroups(prev => prev.map(g => String(g.id) === String(targetGroupId) ? { ...g, current_members: newCount } : g));
@@ -2375,18 +2655,70 @@ export default function App() {
     setPassword('');
     setDisplayName('');
   };
-  const handleOpenNotifications = () => { setShowNotificationModal(true); setHasUnreadNotification(false); };
+  const handleOpenNotifications = () => {
+    setShowNotificationModal(true);
+    setNotifications(prev => {
+      const updated = prev.map(item =>
+        item.type === 'join_request' && !item.isHandled
+          ? item
+          : { ...item, read: true }
+      );
+      updated.forEach(item => {
+        if (item.senderKey) readNotificationKeysRef.current.add(String(item.senderKey));
+      });
+      localStorage.setItem(
+        'read_notification_keys',
+        JSON.stringify(Array.from(readNotificationKeysRef.current))
+      );
+      setHasUnreadNotification(updated.some(item => !item.read));
+      return updated;
+    });
+    friendSyncChannelRef.current?.postMessage({ type: 'notifications_read_all' });
+  };
 
   const handleNotificationClick = (n) => {
-    if ((n.type === 'join_request' || n.type === 'group_request') && !n.isHandled) return;
     setShowNotificationModal(false);
-    setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, read: true } : item));
+    if (n.senderKey) markNotificationRead(n.senderKey);
+    if ((n.type === 'join_request' || n.type === 'group_request') && !n.isHandled) {
+      setNotifications(prev => {
+        const updated = prev.map(item =>
+          item.id === n.id ? { ...item, read: true } : item
+        );
+        setHasUnreadNotification(updated.some(item => !item.read));
+        return updated;
+      });
+      return;
+    }
+
+    setNotifications(prev => {
+      const updated = prev.filter(item => item.id !== n.id);
+      setHasUnreadNotification(updated.some(item => !item.read));
+      return updated;
+    });
+
+    friendSyncChannelRef.current?.postMessage({
+      type: 'notification_read',
+      notificationId: n.id,
+      groupId: (n.type === 'group' || n.type === 'join_request') ? n.groupId : null,
+      friendRequestId: n.type === 'friend_request' ? n.requestId : null,
+      directMessageId: n.type === 'dm' ? n.targetUser?.id : null
+    });
+
     if (n.type === 'dm' && n.targetUser) {
       handleOpenPrivateChat(n.targetUser);
     } else if (n.type === 'friend_request') {
       setShowQuickFriendModal(true);
     } else if (n.type === 'group' || n.type === 'join_request') {
       const gToEnter = n.groupObj || studyGroups.find(g => String(g.id) === String(n.groupId));
+      if (n.groupId) {
+        supabase
+          .from('group_messages')
+          .select('id')
+          .eq('group_id', n.groupId)
+          .then(({ data }) => {
+            (data || []).forEach(message => markMessageAsRead(message.id));
+          });
+      }
       if (gToEnter) handleRequestJoinRoom(gToEnter);
     } else {
       setCurrentTab('my_groups');
@@ -2754,6 +3086,11 @@ export default function App() {
 
   const handleOpenPrivateChat = (targetUser) => {
     setShowQuickFriendModal(false);
+    markNotificationRead(`dm-${targetUser.id}`);
+    friendSyncChannelRef.current?.postMessage({
+      type: 'notification_read',
+      directMessageId: targetUser.id
+    });
     const cleanName = (targetUser.name || targetUser.display_name || targetUser.email?.split('@')[0] || 'เพื่อน').replace(/\s*\(นักศึกษา SPU\)/g, '');
     setActivePrivateMember({
       id: targetUser.id,
@@ -2769,6 +3106,10 @@ export default function App() {
         ? { ...n, read: true }
         : n
     ));
+    friendSyncChannelRef.current?.postMessage({
+      type: 'notification_read',
+      directMessageId: targetUser.id
+    });
     setCurrentTab('private_chat');
   };
 
@@ -2927,7 +3268,7 @@ export default function App() {
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full rounded-3xl p-4 space-y-3 shadow-2xl max-h-[480px] flex flex-col">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <div className="flex items-center gap-1.5"><Bell className="w-4 h-4 text-indigo-600" /><h3 className="font-bold text-xs text-slate-900">การแจ้งเตือนล่าสุด ({notifications.length}/15)</h3></div>
+                <div className="flex items-center gap-1.5"><Bell className="w-4 h-4 text-indigo-600" /><h3 className="font-bold text-xs text-slate-900">การแจ้งเตือนล่าสุด</h3></div>
                 <button onClick={() => setShowNotificationModal(false)} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
               </div>
               <div className="flex-1 overflow-y-auto overscroll-contain space-y-2 no-scrollbar text-xs">
@@ -2988,7 +3329,7 @@ export default function App() {
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <div className="bg-white w-full rounded-3xl p-4 space-y-3 shadow-2xl max-h-[480px] flex flex-col">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <div className="flex items-center gap-1.5"><Users className="w-4 h-4 text-indigo-600" /><h3 className="font-bold text-xs text-slate-900">สมาชิกในห้องติว ({groupMembers.filter(m => m.status === 'accepted').length + 1}/{selectedGroup.max_members || 5})</h3></div>
+              <div className="flex items-center gap-1.5"><Users className="w-4 h-4 text-indigo-600" /><h3 className="font-bold text-xs text-slate-900">สมาชิกในห้องติว ({getActiveMemberCount(groupMembers, selectedGroup)}/{selectedGroup.max_members || 5})</h3></div>
                 <button onClick={() => setShowMemberListModal(false)} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
               </div>
               <div className="flex-1 overflow-y-auto overscroll-contain space-y-2 no-scrollbar text-xs">
@@ -3554,7 +3895,7 @@ export default function App() {
                   <div className="bg-gradient-to-br from-indigo-50/90 to-slate-50 border border-indigo-100 rounded-2xl p-3 space-y-2 text-[10px]">
                     <div className="flex items-center justify-between border-b border-indigo-100/60 pb-1.5">
                       <span className="bg-[#4338CA] text-white px-2.5 py-0.5 rounded-md font-bold text-[9px]">{selectedGroup.subject || 'ติวทั่วไป'}</span>
-                      <span className="text-slate-600 font-bold flex items-center gap-1"><Users className="w-3 h-3 text-indigo-600" /> สมาชิก ({selectedGroup.current_members || 1}/{selectedGroup.max_members || 5} คน)</span>
+                      <span className="text-slate-600 font-bold flex items-center gap-1"><Users className="w-3 h-3 text-indigo-600" /> สมาชิก ({getActiveMemberCount(groupMembers, selectedGroup)}/{selectedGroup.max_members || 5} คน)</span>
                     </div>
                     <div className="text-slate-600 leading-snug space-y-1"><p>{selectedGroup.description}</p><p className="text-[9px] text-slate-400 font-semibold">👑 หัวหน้าห้อง: <b className="text-slate-700">{selectedGroup.host_name}</b></p></div>
                     <div className="flex items-center justify-between text-slate-500 pt-1 border-t border-indigo-100/40">
