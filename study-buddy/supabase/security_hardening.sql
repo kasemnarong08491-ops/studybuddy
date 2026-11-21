@@ -5,6 +5,38 @@
 
 begin;
 
+-- DELETE realtime events must include enough participant data for both sides
+-- to remove a friendship immediately instead of waiting for a manual refresh.
+alter table public.friend_requests replica identity full;
+alter table public.direct_messages replica identity full;
+alter table public.group_members replica identity full;
+
+-- Remove duplicate join requests/memberships and prevent future duplicates.
+-- Accepted membership wins, followed by pending, rejected, and unknown status.
+delete from public.group_members as gm
+using (
+  select
+    ctid,
+    row_number() over (
+      partition by group_id, user_id
+      order by
+        case status
+          when 'accepted' then 0
+          when 'pending' then 1
+          when 'rejected' then 2
+          else 3
+        end,
+        created_at desc nulls last,
+        id desc
+    ) as duplicate_rank
+  from public.group_members
+) as ranked
+where gm.ctid = ranked.ctid
+  and ranked.duplicate_rank > 1;
+
+create unique index if not exists group_members_group_user_unique
+  on public.group_members (group_id, user_id);
+
 -- RLS must be enabled for policies to be enforced.
 alter table public.profiles enable row level security;
 alter table public.friend_requests enable row level security;

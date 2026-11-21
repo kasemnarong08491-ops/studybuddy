@@ -244,6 +244,9 @@ export default function App() {
   const privateChatContainerRef = useRef(null);
   const homeSearchInputRef = useRef(null);
   const readMessageIdsRef = useRef(new Set(JSON.parse(localStorage.getItem('read_msg_ids') || '[]')));
+  const friendRequestPartnerRef = useRef(new window.Map());
+  const friendSyncChannelRef = useRef(null);
+  const groupMembershipStatusRef = useRef(new window.Map());
   const actionToastTimerRef = useRef(null);
   const avatarFileInputRef = useRef(null);
 
@@ -533,6 +536,81 @@ export default function App() {
     }
   };
 
+  const syncMyGroupMembershipResults = async () => {
+    if (!user?.id) return;
+
+    const { data: memberships, error } = await supabase
+      .from('group_members')
+      .select('id,group_id,status,user_id,created_at')
+      .eq('user_id', user.id);
+
+    if (error || !Array.isArray(memberships)) return;
+
+    const nextStatuses = new window.Map(
+      memberships.map(member => [String(member.group_id), {
+        status: member.status,
+        memberId: member.id
+      }])
+    );
+    const previousStatuses = groupMembershipStatusRef.current;
+    const isFirstSync = previousStatuses.size === 0;
+
+    for (const [groupId, nextState] of nextStatuses.entries()) {
+      const previousState = previousStatuses.get(groupId);
+      if (!isFirstSync && previousState?.status !== nextState.status &&
+          (nextState.status === 'accepted' || nextState.status === 'rejected')) {
+        const { data: group } = await supabase
+          .from('study_groups')
+          .select('id,title,subject,host_id,host_name,max_members,current_members,location,date_time')
+          .eq('id', groupId)
+          .maybeSingle();
+
+        const wasAccepted = nextState.status === 'accepted';
+        const senderKey = `group-result-${nextState.memberId}`;
+
+        if (wasAccepted) {
+          setMyJoinedGroupIds(prev => Array.from(new Set([...prev, groupId])));
+        }
+
+        setNotifications(prev => {
+          if (prev.some(n => n.senderKey === senderKey)) return prev;
+          return [{
+            id: senderKey,
+            senderKey,
+            title: wasAccepted ? 'คำขอเข้ากลุ่มได้รับการอนุมัติ' : 'คำขอเข้ากลุ่มถูกปฏิเสธ',
+            desc: wasAccepted
+              ? `หัวหน้าห้องอนุมัติให้คุณเข้าร่วม "${group?.title || 'กลุ่มติว'}" แล้ว`
+              : `หัวหน้าห้องปฏิเสธคำขอเข้าร่วม "${group?.title || 'กลุ่มติว'}"`,
+            time: 'เมื่อสักครู่',
+            read: false,
+            type: 'group',
+            groupId,
+            groupObj: group || null,
+            statusText: wasAccepted ? 'อนุมัติแล้ว' : 'ถูกปฏิเสธ',
+            isHandled: true
+          }, ...prev].slice(0, 15);
+        });
+
+        setHasUnreadNotification(true);
+        showToast(
+          senderKey,
+          wasAccepted ? 'คำขอเข้ากลุ่มได้รับการอนุมัติ' : 'คำขอเข้ากลุ่มถูกปฏิเสธ',
+          wasAccepted
+            ? `คุณสามารถเข้าร่วม "${group?.title || 'กลุ่มติว'}" ได้แล้ว`
+            : `คำขอเข้าร่วม "${group?.title || 'กลุ่มติว'}" ถูกปฏิเสธ`,
+          {
+            type: 'group',
+            groupId,
+            groupObj: group || null,
+            statusText: wasAccepted ? 'อนุมัติแล้ว' : 'ถูกปฏิเสธ'
+          }
+        );
+      }
+    }
+
+    groupMembershipStatusRef.current = nextStatuses;
+  };
+
   useEffect(() => {
     if (!user?.id) return;
     fetchGroupsFromSupabase();
@@ -545,6 +623,7 @@ export default function App() {
   const fetchAllPendingRequestsForHost = async () => {
     if (!user?.id) {
       setAllPendingRequests([]);
+      setNotifications(prev => prev.filter(n => n.type !== 'join_request'));
       return;
     }
 
@@ -559,6 +638,7 @@ export default function App() {
     }
     if (!pendingMembers?.length) {
       setAllPendingRequests([]);
+      setNotifications(prev => prev.filter(n => n.type !== 'join_request'));
       return;
     }
 
@@ -581,6 +661,7 @@ export default function App() {
     )];
     if (!pendingGroupIds.length) {
       setAllPendingRequests([]);
+      setNotifications(prev => prev.filter(n => n.type !== 'join_request'));
       return;
     }
 
@@ -606,7 +687,16 @@ export default function App() {
       if (profiles) profileById = new window.Map(profiles.map(profile => [String(profile.id), profile]));
     }
 
-    const validPending = hostedPending.map(member => {
+    const pendingByUserAndGroup = new window.Map();
+    hostedPending.forEach(member => {
+      const key = `${String(member.group_id)}:${String(member.user_id)}`;
+      const current = pendingByUserAndGroup.get(key);
+      const memberTime = new Date(member.created_at || 0).getTime();
+      const currentTime = new Date(current?.created_at || 0).getTime();
+      if (!current || memberTime >= currentTime) pendingByUserAndGroup.set(key, member);
+    });
+
+    const validPending = Array.from(pendingByUserAndGroup.values()).map(member => {
       const profile = profileById.get(String(member.user_id));
       return {
         ...member,
@@ -618,34 +708,36 @@ export default function App() {
     });
 
     setAllPendingRequests(validPending);
+    setNotifications(prev => {
+      const liveMemberIds = new Set(validPending.map(pm => String(pm.id)));
+      let updated = prev.filter(n =>
+        n.type !== 'join_request' ||
+        liveMemberIds.has(String(n.memberReqId))
+      );
 
-    if (validPending.length > 0) {
-      setNotifications(prev => {
-        let updated = [...prev];
-        validPending.forEach(pm => {
-          const senderKey = `group-req-${pm.id}`;
-          const legacyKey = `join-req-${pm.id}`;
-          if (!updated.some(n => n.senderKey === senderKey || n.senderKey === legacyKey)) {
-            const groupTitle = pm.study_groups?.title || 'กลุ่มเรียน';
-            updated.unshift({
-              id: `group-req-${pm.id}`,
-              senderKey,
-              title: 'มีคำขอเข้าร่วมกลุ่ม',
-              desc: `${pm.user_name || 'ผู้ใช้'} ขอเข้าร่วมกลุ่ม "${groupTitle}"`,
-              time: formatTime(pm.created_at) || '',
-              read: false,
-              type: 'join_request',
-              memberReqId: pm.id,
-              groupId: pm.group_id,
-              userName: pm.user_name,
-              senderAvatar: pm.user_avatar || '',
-              isHandled: false
-            });
-          }
-        });
-        return updated.slice(0, 15);
+      validPending.forEach(pm => {
+        const senderKey = `group-req-${pm.id}`;
+        const legacyKey = `join-req-${pm.id}`;
+        if (!updated.some(n => n.senderKey === senderKey || n.senderKey === legacyKey || String(n.memberReqId) === String(pm.id))) {
+          const groupTitle = pm.study_groups?.title || 'กลุ่มเรียน';
+          updated.unshift({
+            id: `group-req-${pm.id}`,
+            senderKey,
+            title: 'มีคำขอเข้าร่วมกลุ่ม',
+            desc: `${pm.user_name || 'ผู้ใช้'} ขอเข้าร่วมกลุ่ม "${groupTitle}"`,
+            time: formatTime(pm.created_at) || '',
+            read: false,
+            type: 'join_request',
+            memberReqId: pm.id,
+            groupId: pm.group_id,
+            userName: pm.user_name,
+            senderAvatar: pm.user_avatar || '',
+            isHandled: false
+          });
+        }
       });
-    }
+      return updated.slice(0, 15);
+    });
   };
 
   // 💾 โหลดและบันทึกประวัติแจ้งเตือนลง LocalStorage ป้องกันหายเมื่อรีเฟรชหน้าเว็บ
@@ -809,7 +901,7 @@ export default function App() {
     // Friendship status is the source of truth; old messages must not restore a removed friend.
     const { data: acceptedReqs } = await supabase
       .from('friend_requests')
-      .select('sender_id,receiver_id,status')
+      .select('id,sender_id,receiver_id,status')
       .eq('status', 'accepted')
       .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`);
 
@@ -824,6 +916,7 @@ export default function App() {
     (acceptedReqs || []).forEach(r => {
       const otherId = String(r.sender_id) === String(user.id) ? r.receiver_id : r.sender_id;
       if (otherId && String(otherId) !== String(user.id)) partnerIdsSet.add(String(otherId));
+      friendRequestPartnerRef.current.set(String(r.id), String(otherId));
     });
 
     const partnerIds = Array.from(partnerIdsSet);
@@ -909,6 +1002,220 @@ export default function App() {
 
   useEffect(() => { fetchFriendStatus(); }, [user]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    syncMyGroupMembershipResults();
+    const friendSyncInterval = window.setInterval(() => {
+      fetchFriendStatus();
+      fetchAllPendingRequestsForHost();
+      syncMyGroupMembershipResults();
+    }, 5000);
+    return () => window.clearInterval(friendSyncInterval);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id || typeof window.BroadcastChannel !== 'function') return;
+
+    const channel = new window.BroadcastChannel('study-buddy-friend-sync');
+    friendSyncChannelRef.current = channel;
+
+    channel.onmessage = (event) => {
+      const payload = event.data;
+      if (!payload?.type) return;
+
+      if (payload.type === 'group_join_request') {
+        if (!payload.groupHostId) return;
+        const isTargetHost =
+          String(payload.groupHostId) === String(user.id) ||
+          (!!payload.groupHostEmail && payload.groupHostEmail === user.email);
+        if (!isTargetHost) return;
+
+        const senderKey = `group-req-${payload.memberId}`;
+        showToast(
+          senderKey,
+          'มีคำขอเข้าร่วมกลุ่ม',
+          `${payload.userName || 'ผู้ใช้'} ขอเข้าร่วมกลุ่ม "${payload.groupTitle || 'กลุ่มเรียน'}"`,
+          {
+            type: 'join_request',
+            id: senderKey,
+            memberReqId: payload.memberId,
+            groupId: payload.groupId,
+            userName: payload.userName,
+            senderAvatar: payload.userAvatar || '',
+            isHandled: false
+          }
+        );
+        fetchAllPendingRequestsForHost();
+      }
+
+      if (payload.type === 'group_join_result') {
+        if (String(payload.memberUserId) !== String(user.id)) return;
+        const wasAccepted = payload.status === 'accepted';
+        setMyJoinedGroupIds(prev => wasAccepted
+          ? Array.from(new Set([...prev, payload.groupId]))
+          : prev
+        );
+        setNotifications(prev => {
+          const notification = {
+            id: `group-result-${payload.memberId}`,
+            senderKey: `group-result-${payload.memberId}`,
+            title: wasAccepted ? 'คำขอเข้ากลุ่มได้รับการอนุมัติ' : 'คำขอเข้ากลุ่มถูกปฏิเสธ',
+            desc: wasAccepted
+              ? `หัวหน้าห้องอนุมัติให้คุณเข้าร่วม "${payload.groupTitle || 'กลุ่มติว'}" แล้ว`
+              : `หัวหน้าห้องปฏิเสธคำขอเข้าร่วม "${payload.groupTitle || 'กลุ่มติว'}"`,
+            time: 'เมื่อสักครู่',
+            read: false,
+            type: 'group',
+            groupId: payload.groupId,
+            groupObj: payload.groupObj || null,
+            statusText: wasAccepted ? 'อนุมัติแล้ว' : 'ถูกปฏิเสธ',
+            isHandled: true
+          };
+          return [notification, ...prev.filter(n =>
+            n.senderKey !== notification.senderKey &&
+            !(n.type === 'join_request' && String(n.memberReqId) === String(payload.memberId))
+          )].slice(0, 15);
+        });
+        setHasUnreadNotification(true);
+        showToast(
+          `group-result-${payload.memberId}`,
+          wasAccepted ? 'คำขอเข้ากลุ่มได้รับการอนุมัติ' : 'คำขอเข้ากลุ่มถูกปฏิเสธ',
+          wasAccepted
+            ? `คุณสามารถเข้าร่วม "${payload.groupTitle || 'กลุ่มติว'}" ได้แล้ว`
+            : `คำขอเข้าร่วม "${payload.groupTitle || 'กลุ่มติว'}" ถูกปฏิเสธ`,
+          {
+            type: 'group',
+            groupId: payload.groupId,
+            groupObj: payload.groupObj || null,
+            statusText: wasAccepted ? 'อนุมัติแล้ว' : 'ถูกปฏิเสธ'
+          }
+        );
+        fetchGroupsFromSupabase();
+      }
+
+      if (payload.type === 'friend_request') {
+        if (String(payload.receiverId) !== String(user.id)) return;
+        const request = payload.request || {
+          id: `pending-${payload.senderId}`,
+          sender_id: payload.senderId,
+          sender_name: payload.senderName,
+          receiver_id: payload.receiverId,
+          status: 'pending'
+        };
+        setFriendRequests(prev => {
+          if (payload.request?.id && prev.some(item => String(item.id) === String(payload.request.id))) return prev;
+          return [...prev, request];
+        });
+        showToast(
+          `friend-req-${payload.request?.id || payload.senderId}`,
+          'มีคำขอเป็นเพื่อนใหม่',
+          `${payload.senderName || 'ผู้ใช้'} ส่งคำขอมาเป็นเพื่อนกับคุณ`,
+          { type: 'friend_request', requestId: payload.request?.id }
+        );
+        fetchFriendStatus();
+      }
+
+      if (payload.type === 'friend_accepted') {
+        if (String(payload.partnerId) === String(user.id)) return;
+        setAcceptedFriends(prev => {
+          if (prev.some(friend => String(friend.id) === String(payload.partnerId))) return prev;
+          return [...prev, {
+            id: payload.partnerId,
+            display_name: payload.partnerName || 'เพื่อน',
+            name: payload.partnerName || 'เพื่อน',
+            avatar: payload.partnerAvatar || cartoonAvatars[0].url,
+            gender: payload.partnerGender || ''
+          }];
+        });
+        setFriendRequests(prev => prev.filter(r =>
+          String(r.sender_id) !== String(payload.partnerId) &&
+          String(r.receiver_id) !== String(payload.partnerId)
+        ));
+        setSentFriendRequests(prev => prev.filter(r =>
+          String(r.sender_id) !== String(payload.partnerId) &&
+          String(r.receiver_id) !== String(payload.partnerId)
+        ));
+        setNotifications(prev => prev.filter(n =>
+          n.type !== 'friend_request' ||
+          (String(n.requestId) !== String(payload.requestId) &&
+            n.senderKey !== `friend-req-${payload.requestId}`)
+        ));
+        fetchFriendStatus();
+      }
+
+      if (payload.type === 'friend_removed') {
+        if (String(payload.partnerId) === String(user.id)) return;
+        setAcceptedFriends(prev => prev.filter(friend => String(friend.id) !== String(payload.partnerId)));
+        setRecentDMMessages(prev => {
+          const next = { ...prev };
+          delete next[payload.partnerId];
+          delete next[String(payload.partnerId)];
+          return next;
+        });
+        setNotifications(prev => prev.filter(n =>
+          !(n.type === 'dm' && String(n.targetUser?.id) === String(payload.partnerId))
+        ));
+        if (activePrivateMember && String(activePrivateMember.id) === String(payload.partnerId)) {
+          setActivePrivateMember(null);
+          setPrivateMessages([]);
+          setCurrentTab('my_groups');
+        }
+        fetchFriendStatus();
+      }
+
+      if (payload.type === 'direct_message') {
+        const message = payload.message;
+        if (!message) return;
+        if (String(message.sender_id) !== String(user.id) &&
+            String(message.receiver_id) !== String(user.id)) return;
+        const targetFriendId = String(message.sender_id) === String(user.id)
+          ? message.receiver_id
+          : message.sender_id;
+        const cleanText = message.text?.startsWith('[IMAGE]:') ? '[รูปภาพ]' : (message.text || '');
+        const isCurrentlyChatting = currentTab === 'private_chat' &&
+          activePrivateMember?.id && String(activePrivateMember.id) === String(targetFriendId);
+
+        setAcceptedFriends(prev => {
+          if (prev.some(friend => String(friend.id) === String(targetFriendId))) return prev;
+          return [...prev, {
+            id: targetFriendId,
+            display_name: String(message.sender_id) === String(user.id)
+              ? (message.receiver_name || 'เพื่อน')
+              : (message.sender_name || 'เพื่อน'),
+            name: String(message.sender_id) === String(user.id)
+              ? (message.receiver_name || 'เพื่อน')
+              : (message.sender_name || 'เพื่อน'),
+            avatar: cartoonAvatars[0].url
+          }];
+        });
+
+        if (isCurrentlyChatting || String(message.sender_id) === String(user.id)) {
+          markMessageAsRead(message.id);
+          setPrivateMessages(prev => {
+            if (prev.some(item => String(item.id) === String(message.id))) return prev;
+            return [...prev, message];
+          });
+          setTimeout(() => scrollToBottom(true, privateChatContainerRef), 20);
+        }
+
+        setRecentDMMessages(prev => ({
+          ...prev,
+          [targetFriendId]: {
+            text: String(message.sender_id) === String(user.id) ? `คุณ: ${cleanText}` : cleanText,
+            time: formatTime(message.created_at),
+            unread: !isCurrentlyChatting && String(message.sender_id) !== String(user.id),
+            timestamp: new Date(message.created_at).getTime() || Date.now()
+          }
+        }));
+      }
+    };
+
+    return () => {
+      channel.close();
+      friendSyncChannelRef.current = null;
+    };
+  }, [user?.id, currentTab, activePrivateMember]);
+
   // GLOBAL REALTIME HUB
   useEffect(() => {
     if (!user?.id) return;
@@ -917,7 +1224,18 @@ export default function App() {
         const newMsg = payload.new;
         const isFromMe = newMsg.sender_id === user.id;
         const targetFriendId = isFromMe ? newMsg.receiver_id : newMsg.sender_id;
-        if (!acceptedFriends.some(friend => String(friend.id) === String(targetFriendId))) return;
+        const partnerName = isFromMe
+          ? (newMsg.receiver_name || 'เพื่อน')
+          : (newMsg.sender_name || 'เพื่อน');
+        setAcceptedFriends(prev => {
+          if (prev.some(friend => String(friend.id) === String(targetFriendId))) return prev;
+          return [...prev, {
+            id: targetFriendId,
+            display_name: partnerName,
+            name: partnerName,
+            avatar: cartoonAvatars[0].url
+          }];
+        });
 
         const cleanText = newMsg.text?.startsWith('[IMAGE]:') ? '📷 [ส่งรูปภาพ]' : newMsg.text;
         const isCurrentlyChatting = currentTab === 'private_chat' && activePrivateMember?.id === targetFriendId;
@@ -944,6 +1262,11 @@ export default function App() {
           showToast(`dm-${newMsg.sender_id}`, `💬 ข้อความใหม่จาก ${newMsg.sender_name}`, cleanText, { type: 'dm', targetUser: { id: newMsg.sender_id, name: newMsg.sender_name, avatar: realAvatar } });
         }
       })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'direct_messages' }, () => {
+        fetchFriendStatus();
+        setTimeout(fetchFriendStatus, 300);
+        setTimeout(fetchFriendStatus, 1200);
+      })
 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests' }, (payload) => {
         fetchFriendStatus();
@@ -955,13 +1278,53 @@ export default function App() {
           setFriendRequests(prev => prev.filter(r => String(r.id) !== String(req.id)));
           setSentFriendRequests(prev => prev.filter(r => String(r.id) !== String(req.id)));
           setNotifications(prev => prev.filter(n => !(n.type === 'friend_request' && (String(n.requestId) === String(req.id) || n.senderKey === `friend-req-${req.id}`))));
+          const partnerId = String(req.sender_id) === String(user.id) ? req.receiver_id : req.sender_id;
+          const partnerName = String(req.sender_id) === String(user.id)
+            ? (req.receiver_name || 'เพื่อน')
+            : (req.sender_name || 'เพื่อน');
+          if (partnerId) {
+            setAcceptedFriends(prev => {
+              if (prev.some(friend => String(friend.id) === String(partnerId))) return prev;
+              return [...prev, {
+                id: partnerId,
+                display_name: partnerName,
+                name: partnerName,
+                avatar: cartoonAvatars[0].url
+              }];
+            });
+          }
           if (String(req.sender_id) === String(user.id)) {
             showToast(`friend-acc-${req.id}`, 'คำขอเป็นเพื่อนได้รับการยอมรับ', 'ตอนนี้คุณสามารถเริ่มแชทส่วนตัวได้แล้ว');
           }
-        } else if (payload.eventType === 'DELETE' && (String(req.sender_id) === String(user.id) || String(req.receiver_id) === String(user.id))) {
+          setTimeout(fetchFriendStatus, 300);
+          setTimeout(fetchFriendStatus, 1200);
+        } else if (payload.eventType === 'DELETE') {
           setFriendRequests(prev => prev.filter(r => String(r.id) !== String(req.id)));
           setSentFriendRequests(prev => prev.filter(r => String(r.id) !== String(req.id)));
           setNotifications(prev => prev.filter(n => !(n.type === 'friend_request' && (String(n.requestId) === String(req.id) || n.senderKey === `friend-req-${req.id}`))));
+          const removedFriendId = req.sender_id && req.receiver_id
+            ? (String(req.sender_id) === String(user.id) ? req.receiver_id : req.sender_id)
+            : friendRequestPartnerRef.current.get(String(req.id));
+          if (removedFriendId) {
+            setAcceptedFriends(prev => prev.filter(f => String(f.id) !== String(removedFriendId)));
+            friendRequestPartnerRef.current.delete(String(req.id));
+            setRecentDMMessages(prev => {
+              const next = { ...prev };
+              delete next[removedFriendId];
+              delete next[String(removedFriendId)];
+              return next;
+            });
+            setNotifications(prev => prev.filter(n =>
+              !(n.type === 'dm' && String(n.targetUser?.id) === String(removedFriendId))
+            ));
+            if (activePrivateMember && String(activePrivateMember.id) === String(removedFriendId)) {
+              setActivePrivateMember(null);
+              setPrivateMessages([]);
+              setCurrentTab('my_groups');
+            }
+          }
+          setTimeout(fetchFriendStatus, 300);
+          setTimeout(fetchFriendStatus, 1200);
         }
       })
 
@@ -973,16 +1336,69 @@ export default function App() {
         if (m && (String(m.user_id) === String(currentUserId) || m.user_name === currentUser.name)) {
           if (m.status === 'accepted') {
             setMyJoinedGroupIds(prev => Array.from(new Set([...prev, m.group_id])));
+            groupMembershipStatusRef.current.set(String(m.group_id), {
+              status: 'accepted',
+              memberId: m.id
+            });
 
             let approvedGroup = studyGroups.find(g => String(g.id) === String(m.group_id));
             if (!approvedGroup && m.group_id != null) {
               const { data: fetchedG } = await supabase.from('study_groups').select('*').eq('id', m.group_id).single();
               if (fetchedG) approvedGroup = fetchedG;
             }
-
-            if (approvedGroup) {
-              showToast(`approved-${m.group_id}`, 'คำขอเข้าร่วมกลุ่มได้รับการอนุมัติ', `คุณสามารถเข้าร่วมกลุ่ม "${approvedGroup.title}" ได้แล้ว`, { type: 'group', groupId: m.group_id, groupObj: approvedGroup });
-            }
+            showToast(
+              `approved-${m.group_id}`,
+              'คำขอเข้าร่วมกลุ่มได้รับการอนุมัติ',
+              `คุณสามารถเข้าร่วมกลุ่ม "${approvedGroup?.title || 'กลุ่มติว'}" ได้แล้ว`,
+              { type: 'group', groupId: m.group_id, groupObj: approvedGroup || null }
+            );
+            setNotifications(prev => {
+              const senderKey = `approved-${m.group_id}`;
+              if (prev.some(n => n.senderKey === senderKey)) return prev;
+              return [{
+                id: senderKey,
+                senderKey,
+                title: 'คำขอเข้าร่วมกลุ่มได้รับการอนุมัติ',
+                desc: `หัวหน้าห้องอนุมัติให้คุณเข้าร่วม "${approvedGroup?.title || 'กลุ่มติว'}" แล้ว`,
+                time: 'เมื่อสักครู่',
+                read: false,
+                type: 'group',
+                groupId: m.group_id,
+                groupObj: approvedGroup || null,
+                statusText: 'อนุมัติแล้ว',
+                isHandled: true
+              }, ...prev].slice(0, 15);
+            });
+            setHasUnreadNotification(true);
+          } else if (m.status === 'rejected') {
+            setMyJoinedGroupIds(prev => prev.filter(id => String(id) !== String(m.group_id)));
+            groupMembershipStatusRef.current.set(String(m.group_id), {
+              status: 'rejected',
+              memberId: m.id
+            });
+            setNotifications(prev => {
+              const senderKey = `group-rejected-${m.group_id}`;
+              const notification = {
+                id: senderKey,
+                senderKey,
+                title: 'คำขอเข้ากลุ่มถูกปฏิเสธ',
+                desc: `หัวหน้าห้องปฏิเสธคำขอเข้าร่วมกลุ่มของคุณ`,
+                time: 'เมื่อสักครู่',
+                read: false,
+                type: 'group',
+                groupId: m.group_id,
+                statusText: 'ถูกปฏิเสธ',
+                isHandled: true
+              };
+              return [notification, ...prev.filter(n => n.senderKey !== senderKey)].slice(0, 15);
+            });
+            setHasUnreadNotification(true);
+            showToast(
+              `group-rejected-${m.group_id}`,
+              'คำขอเข้ากลุ่มถูกปฏิเสธ',
+              'หัวหน้าห้องปฏิเสธคำขอเข้าร่วมกลุ่มของคุณ',
+              { type: 'group', groupId: m.group_id, statusText: 'ถูกปฏิเสธ' }
+            );
           }
         }
 
@@ -1261,9 +1677,35 @@ export default function App() {
   // Actions
   const handleSendFriendRequest = async (targetUser) => {
     if (!user?.id || !targetUser?.id) return;
-    const { error } = await supabase.from('friend_requests').insert([{ sender_id: user.id, sender_name: currentUser.name, receiver_id: targetUser.id, receiver_name: targetUser.name, status: 'pending' }]);
+    const { data, error } = await supabase.from('friend_requests').insert([{
+      sender_id: user.id,
+      sender_name: currentUser.name,
+      receiver_id: targetUser.id,
+      receiver_name: targetUser.name,
+      status: 'pending'
+    }]).select();
     if (error) notifyUser('ส่งคำขอเป็นเพื่อนไม่สำเร็จ: ' + error.message);
-    else { notifyUser(`ส่งคำขอเป็นเพื่อนถึง ${targetUser.name || 'ผู้ใช้'} แล้ว`); fetchFriendStatus(); }
+    else {
+      notifyUser(`ส่งคำขอเป็นเพื่อนถึง ${targetUser.name || 'ผู้ใช้'} แล้ว`);
+      setSentFriendRequests(prev => {
+        if (prev.some(request => String(request.receiver_id) === String(targetUser.id))) return prev;
+        return [...prev, data?.[0] || {
+          sender_id: user.id,
+          sender_name: currentUser.name,
+          receiver_id: targetUser.id,
+          receiver_name: targetUser.name,
+          status: 'pending'
+        }];
+      });
+      friendSyncChannelRef.current?.postMessage({
+        type: 'friend_request',
+        request: data?.[0] || null,
+        receiverId: targetUser.id,
+        senderId: user.id,
+        senderName: currentUser.name
+      });
+      fetchFriendStatus();
+    }
   };
 
   const handleAcceptFriendRequest = async (request) => {
@@ -1272,6 +1714,24 @@ export default function App() {
     if (!error) {
       notifyUser(`ตอบรับคำขอจาก ${request.sender_name || 'เพื่อน'} เรียบร้อยแล้ว!`);
       setFriendRequests(prev => prev.filter(r => r.id !== request.id));
+      if (request.sender_id) {
+        setAcceptedFriends(prev => {
+          if (prev.some(friend => String(friend.id) === String(request.sender_id))) return prev;
+          return [...prev, {
+            id: request.sender_id,
+            display_name: request.sender_name || 'เพื่อน',
+            name: request.sender_name || 'เพื่อน',
+            avatar: cartoonAvatars[0].url
+          }];
+        });
+        friendSyncChannelRef.current?.postMessage({
+          type: 'friend_accepted',
+          requestId: request.id,
+          partnerId: request.sender_id,
+          partnerName: request.sender_name || 'เพื่อน',
+          partnerAvatar: cartoonAvatars[0].url
+        });
+      }
       setNotifications(prev => prev.map(n => {
         if (n.type === 'friend_request' && (n.requestId === request.id || n.senderKey === `friend-req-${request.id}`)) {
           return { ...n, isHandled: true, read: true, statusText: 'เป็นเพื่อนกันแล้ว' };
@@ -1279,6 +1739,8 @@ export default function App() {
         return n;
       }));
       fetchFriendStatus();
+      setTimeout(fetchFriendStatus, 300);
+      setTimeout(fetchFriendStatus, 1200);
     } else {
       notifyUser('ทำรายการไม่สำเร็จ: ' + error.message);
     }
@@ -1349,6 +1811,10 @@ export default function App() {
       return next;
     });
     setNotifications(prev => prev.filter(n => !(n.type === 'dm' && String(n.targetUser?.id) === String(friendUserId))));
+    friendSyncChannelRef.current?.postMessage({
+      type: 'friend_removed',
+      partnerId: friendUserId
+    });
     if (activePrivateMember && String(activePrivateMember.id) === String(friendUserId)) {
       setActivePrivateMember(null);
       setPrivateMessages([]);
@@ -1356,12 +1822,25 @@ export default function App() {
     }
     notifyUser('ลบเพื่อนเรียบร้อยแล้ว');
     fetchFriendStatus();
+    setTimeout(fetchFriendStatus, 300);
+    setTimeout(fetchFriendStatus, 1200);
   };
 
   const handleSendPrivateMsg = async (attachedImage = null) => {
     const textToSend = attachedImage || privateMsgInput.trim();
     if (!textToSend || !activePrivateMember?.id || !user) return;
+    const textBeforeSend = privateMsgInput;
     if (!attachedImage) setPrivateMsgInput('');
+    setAcceptedFriends(prev => {
+      if (prev.some(friend => String(friend.id) === String(activePrivateMember.id))) return prev;
+      return [...prev, {
+        id: activePrivateMember.id,
+        display_name: activePrivateMember.name,
+        name: activePrivateMember.name,
+        avatar: activePrivateMember.avatar || cartoonAvatars[0].url,
+        gender: activePrivateMember.gender || ''
+      }];
+    });
 
     const { data, error } = await supabase.from('direct_messages').insert([{
       sender_id: user.id,
@@ -1374,6 +1853,10 @@ export default function App() {
     if (!error && data?.[0]) {
       markMessageAsRead(data[0].id);
       setPrivateMessages(prev => [...prev, data[0]]);
+      friendSyncChannelRef.current?.postMessage({
+        type: 'direct_message',
+        message: data[0]
+      });
       setTimeout(() => scrollToBottom(true, privateChatContainerRef), 10);
       const cleanText = attachedImage ? '📷 [ส่งรูปภาพ]' : textToSend;
       setRecentDMMessages(prev => ({
@@ -1385,6 +1868,9 @@ export default function App() {
           timestamp: Date.now()
         }
       }));
+    } else if (error) {
+      if (!attachedImage) setPrivateMsgInput(textBeforeSend);
+      notifyUser('ส่งข้อความส่วนตัวไม่สำเร็จ: ' + error.message, 'error');
     }
   };
 
@@ -1510,17 +1996,36 @@ export default function App() {
     }
 
     if (!existing || existing.length === 0) {
-      const { error } = await supabase.from('group_members').insert([{
+      const { data: insertedRequests, error } = await supabase.from('group_members').insert([{
         group_id: group.id,
         user_id: userId,
         user_name: currentUser.name,
         user_avatar: currentUser.avatar,
         status: 'pending'
-      }]);
+      }]).select();
       if (error) {
         notifyUser('ส่งคำขอเข้าร่วมกลุ่มไม่สำเร็จ: ' + error.message);
       } else {
         notifyUser('ส่งคำขอเข้าร่วมกลุ่มเรียบร้อยแล้ว รอการอนุมัติจากหัวหน้ากลุ่ม');
+        const insertedRequest = insertedRequests?.[0];
+        if (insertedRequest?.id) {
+          groupMembershipStatusRef.current.set(String(group.id), {
+            status: 'pending',
+            memberId: insertedRequest.id
+          });
+        }
+        friendSyncChannelRef.current?.postMessage({
+          type: 'group_join_request',
+          memberId: insertedRequest?.id,
+          groupId: group.id,
+          groupTitle: group.title,
+          groupHostId: group.host_id,
+          groupHostEmail: group.host_email || null,
+          userName: currentUser.name,
+          userAvatar: currentUser.avatar
+        });
+        setTimeout(fetchAllPendingRequestsForHost, 300);
+        setTimeout(fetchAllPendingRequestsForHost, 1200);
       }
     } else {
       const myMember = existing[0];
@@ -1529,6 +2034,25 @@ export default function App() {
         setCurrentTab('room_chat');
       } else if (myMember.status === 'pending') {
         notifyUser('คำขอของคุณกำลังรอการอนุมัติจากหัวหน้ากลุ่ม');
+      } else if (myMember.status === 'rejected') {
+        const { error: reapplyError } = await supabase
+          .from('group_members')
+          .update({
+            status: 'pending',
+            user_name: currentUser.name,
+            user_avatar: currentUser.avatar
+          })
+          .eq('id', myMember.id);
+
+        if (reapplyError) {
+          notifyUser('ส่งคำขอเข้าร่วมกลุ่มไม่สำเร็จ: ' + reapplyError.message);
+        } else {
+          notifyUser('ส่งคำขอเข้าร่วมกลุ่มใหม่เรียบร้อยแล้ว รอการอนุมัติจากหัวหน้ากลุ่ม');
+          groupMembershipStatusRef.current.set(String(group.id), {
+            status: 'pending',
+            memberId: myMember.id
+          });
+        }
       } else {
         notifyUser('ไม่สามารถเข้าร่วมกลุ่มนี้ได้ในขณะนี้');
       }
@@ -1574,6 +2098,12 @@ export default function App() {
     const pendingReq = allPendingRequests.find(req => String(req.id) === String(memberId))
       || (notifId ? notifications.find(n => String(n.id) === String(notifId) || String(n.memberReqId) === String(memberId)) : null)
       || notifications.find(n => String(n.memberReqId) === String(memberId));
+    const targetMemberUserId = pendingReq?.user_id
+      || groupMembers.find(m => String(m.id) === String(memberId))?.user_id
+      || null;
+    const targetMemberName = pendingReq?.user_name
+      || groupMembers.find(m => String(m.id) === String(memberId))?.user_name
+      || 'สมาชิก';
     const targetGroupId = pendingReq?.group_id
       || groupMembers.find(m => String(m.id) === String(memberId))?.group_id
       || selectedGroup?.id
@@ -1597,6 +2127,18 @@ export default function App() {
       }
 
       if (targetGroupId != null) {
+        const targetGroup = studyGroups.find(group => String(group.id) === String(targetGroupId))
+          || (selectedGroup?.id && String(selectedGroup.id) === String(targetGroupId) ? selectedGroup : null);
+        friendSyncChannelRef.current?.postMessage({
+          type: 'group_join_result',
+          memberId,
+          memberUserId: targetMemberUserId,
+          memberName: targetMemberName,
+          status,
+          groupId: targetGroupId,
+          groupTitle: targetGroup?.title || pendingReq?.study_groups?.title || 'กลุ่มติว',
+          groupObj: targetGroup || pendingReq?.study_groups || null
+        });
         if (status === 'accepted') {
           const { data: acceptedList } = await supabase.from('group_members').select('*').eq('group_id', targetGroupId).eq('status', 'accepted');
           const newCount = (acceptedList ? acceptedList.length : 0) + 1;
