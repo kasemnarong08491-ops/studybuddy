@@ -195,6 +195,7 @@ export default function App() {
   const [actionToast, setActionToast] = useState(null);
   const [hasUnreadNotification, setHasUnreadNotification] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [notificationsLoadedForUser, setNotificationsLoadedForUser] = useState(null);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [showQuickFriendModal, setShowQuickFriendModal] = useState(false);
 
@@ -243,10 +244,8 @@ export default function App() {
   const unseenRoomMessageIdsRef = useRef(new Set());
   const privateChatContainerRef = useRef(null);
   const homeSearchInputRef = useRef(null);
-  const readMessageIdsRef = useRef(new Set(JSON.parse(localStorage.getItem('read_msg_ids') || '[]')));
-  const readNotificationKeysRef = useRef(new window.Set(
-    JSON.parse(localStorage.getItem('read_notification_keys') || '[]')
-  ));
+  const readMessageIdsRef = useRef(new window.Set());
+  const readNotificationKeysRef = useRef(new window.Set());
   const friendRequestPartnerRef = useRef(new window.Map());
   const friendSyncChannelRef = useRef(null);
   const groupMembershipStatusRef = useRef(new window.Map());
@@ -402,7 +401,9 @@ export default function App() {
   const markMessageAsRead = (msgId) => {
     if (!msgId) return;
     readMessageIdsRef.current.add(msgId);
-    localStorage.setItem('read_msg_ids', JSON.stringify(Array.from(readMessageIdsRef.current)));
+    if (user?.id) {
+      localStorage.setItem(`study_buddy_read_msg_ids_${user.id}`, JSON.stringify(Array.from(readMessageIdsRef.current)));
+    }
     friendSyncChannelRef.current?.postMessage({
       type: 'message_read',
       messageId: String(msgId)
@@ -413,10 +414,12 @@ export default function App() {
     if (!senderKey && (!extraKeys || extraKeys.length === 0)) return;
     const keys = [senderKey, ...extraKeys].filter(Boolean).map(String);
     keys.forEach(key => readNotificationKeysRef.current.add(key));
-    localStorage.setItem(
-      'read_notification_keys',
-      JSON.stringify(Array.from(readNotificationKeysRef.current))
-    );
+    if (user?.id) {
+      localStorage.setItem(
+        `study_buddy_read_notification_keys_${user.id}`,
+        JSON.stringify(Array.from(readNotificationKeysRef.current))
+      );
+    }
     setNotifications(prev => {
       const updated = prev.map(item =>
         keys.includes(String(item.senderKey))
@@ -439,10 +442,12 @@ export default function App() {
         return { ...item, read: true };
       });
       if (changed) {
-        localStorage.setItem(
-          'read_notification_keys',
-          JSON.stringify(Array.from(readNotificationKeysRef.current))
-        );
+        if (user?.id) {
+          localStorage.setItem(
+            `study_buddy_read_notification_keys_${user.id}`,
+            JSON.stringify(Array.from(readNotificationKeysRef.current))
+          );
+        }
       }
       setHasUnreadNotification(updated.some(item => !item.read));
       return updated;
@@ -450,8 +455,33 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!user?.id) {
+      readMessageIdsRef.current = new window.Set();
+      readNotificationKeysRef.current = new window.Set();
+      setNotifications([]);
+      setNotificationsLoadedForUser(null);
+      setToastNotification(null);
+      setHasUnreadNotification(false);
+      return;
+    }
+
+    try {
+      readMessageIdsRef.current = new window.Set(
+        JSON.parse(localStorage.getItem(`study_buddy_read_msg_ids_${user.id}`) || '[]')
+      );
+      readNotificationKeysRef.current = new window.Set(
+        JSON.parse(localStorage.getItem(`study_buddy_read_notification_keys_${user.id}`) || '[]')
+      );
+    } catch {
+      readMessageIdsRef.current = new window.Set();
+      readNotificationKeysRef.current = new window.Set();
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
     const syncReadIdsFromStorage = (event) => {
-      if (event.key === 'read_msg_ids') {
+      if (!user?.id) return;
+      if (event.key === `study_buddy_read_msg_ids_${user.id}`) {
         try {
           const ids = JSON.parse(event.newValue || '[]');
           readMessageIdsRef.current = new window.Set(Array.isArray(ids) ? ids : []);
@@ -459,7 +489,7 @@ export default function App() {
           readMessageIdsRef.current = new window.Set();
         }
       }
-      if (event.key === 'read_notification_keys') {
+      if (event.key === `study_buddy_read_notification_keys_${user.id}`) {
         try {
           const keys = JSON.parse(event.newValue || '[]');
           readNotificationKeysRef.current = new window.Set(Array.isArray(keys) ? keys : []);
@@ -473,7 +503,7 @@ export default function App() {
     };
     window.addEventListener('storage', syncReadIdsFromStorage);
     return () => window.removeEventListener('storage', syncReadIdsFromStorage);
-  }, []);
+  }, [user?.id]);
 
   const handleIncomingRoomMessage = (message) => {
     const isOwnMessage = message.sender_name === currentUser.name;
@@ -863,7 +893,16 @@ export default function App() {
 
   // 💾 โหลดและบันทึกประวัติแจ้งเตือนลง LocalStorage ป้องกันหายเมื่อรีเฟรชหน้าเว็บ
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setNotifications([]);
+      setNotificationsLoadedForUser(null);
+      setToastNotification(null);
+      setHasUnreadNotification(false);
+      return;
+    }
+    setNotifications([]);
+    setToastNotification(null);
+    setHasUnreadNotification(false);
     try {
       const saved = localStorage.getItem(`study_buddy_notifications_${user.id}`);
       if (saved) {
@@ -877,10 +916,11 @@ export default function App() {
     } catch (e) {
       console.warn('Failed to load notifications from localStorage:', e);
     }
+    setNotificationsLoadedForUser(user.id);
   }, [user?.id]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || notificationsLoadedForUser !== user.id) return;
     try {
       localStorage.setItem(`study_buddy_notifications_${user.id}`, JSON.stringify(notifications));
       const hasUnread = notifications.some(n => !n.read);
@@ -888,7 +928,7 @@ export default function App() {
     } catch (e) {
       console.warn('Failed to save notifications to localStorage:', e);
     }
-  }, [notifications, user?.id]);
+  }, [notifications, notificationsLoadedForUser, user?.id]);
 
   useEffect(() => {
     fetchAllPendingRequestsForHost();
@@ -940,7 +980,6 @@ export default function App() {
 
       return updatedList.slice(0, 15);
     });
-    setTimeout(() => setToastNotification(null), 5000);
   };
 
   const syncProfileToSupabase = async (userData, profileData) => {
@@ -954,11 +993,23 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) { setUser(session.user); fetchProfileFromSupabase(session.user); }
-      else setUser(null);
+      else {
+        setUser(null);
+        setNotifications([]);
+        setNotificationsLoadedForUser(null);
+        setToastNotification(null);
+        setHasUnreadNotification(false);
+      }
     });
     const { data: authListener } = supabase.auth.onAuthStateChange((_e, session) => {
       if (session?.user) { setUser(session.user); fetchProfileFromSupabase(session.user); }
-      else setUser(null);
+      else {
+        setUser(null);
+        setNotifications([]);
+        setNotificationsLoadedForUser(null);
+        setToastNotification(null);
+        setHasUnreadNotification(false);
+      }
     });
     return () => authListener.subscription.unsubscribe();
   }, []);
@@ -1263,7 +1314,7 @@ export default function App() {
   useEffect(() => {
     if (!user?.id || typeof window.BroadcastChannel !== 'function') return;
 
-    const channel = new window.BroadcastChannel('study-buddy-friend-sync');
+    const channel = new window.BroadcastChannel(`study-buddy-friend-sync-${user.id}`);
     friendSyncChannelRef.current = channel;
 
     channel.onmessage = (event) => {
@@ -2654,6 +2705,12 @@ export default function App() {
     setEmail('');
     setPassword('');
     setDisplayName('');
+    setNotifications([]);
+    setNotificationsLoadedForUser(null);
+    setToastNotification(null);
+    setHasUnreadNotification(false);
+    setActivePrivateMember(null);
+    setPrivateMessages([]);
   };
   const handleOpenNotifications = () => {
     setShowNotificationModal(true);
@@ -2666,10 +2723,12 @@ export default function App() {
       updated.forEach(item => {
         if (item.senderKey) readNotificationKeysRef.current.add(String(item.senderKey));
       });
-      localStorage.setItem(
-        'read_notification_keys',
-        JSON.stringify(Array.from(readNotificationKeysRef.current))
-      );
+      if (user?.id) {
+        localStorage.setItem(
+          `study_buddy_read_notification_keys_${user.id}`,
+          JSON.stringify(Array.from(readNotificationKeysRef.current))
+        );
+      }
       setHasUnreadNotification(updated.some(item => !item.read));
       return updated;
     });
