@@ -250,6 +250,7 @@ export default function App() {
   const friendSyncChannelRef = useRef(null);
   const groupMembershipStatusRef = useRef(new window.Map());
   const fallbackGroupToastIdsRef = useRef(new window.Set());
+  const dismissedToastMessageIdsRef = useRef(new window.Set());
   const currentTabRef = useRef('home');
   const selectedGroupRef = useRef(null);
   const actionToastTimerRef = useRef(null);
@@ -458,6 +459,7 @@ export default function App() {
     if (!user?.id) {
       readMessageIdsRef.current = new window.Set();
       readNotificationKeysRef.current = new window.Set();
+      dismissedToastMessageIdsRef.current = new window.Set();
       setNotifications([]);
       setNotificationsLoadedForUser(null);
       setToastNotification(null);
@@ -471,6 +473,9 @@ export default function App() {
       );
       readNotificationKeysRef.current = new window.Set(
         JSON.parse(localStorage.getItem(`study_buddy_read_notification_keys_${user.id}`) || '[]')
+      );
+      dismissedToastMessageIdsRef.current = new window.Set(
+        JSON.parse(localStorage.getItem(`study_buddy_dismissed_dm_toast_ids_${user.id}`) || '[]')
       );
     } catch {
       readMessageIdsRef.current = new window.Set();
@@ -939,7 +944,9 @@ export default function App() {
 
   const showToast = (senderKey, title, message, notificationMeta = {}) => {
     const isAlreadyRead = readNotificationKeysRef.current.has(String(senderKey));
-    if (isAlreadyRead) {
+    const isDismissed = notificationMeta.messageId
+      && dismissedToastMessageIdsRef.current.has(String(notificationMeta.messageId));
+    if (isAlreadyRead || isDismissed) {
       setNotifications(prev => prev.map(item =>
         item.senderKey === senderKey ? { ...item, read: true } : item
       ));
@@ -1621,7 +1628,7 @@ export default function App() {
 
         if (shouldMarkUnread) {
           const realAvatar = newMsg.sender_avatar || cartoonAvatars[0].url;
-          showToast(`dm-${newMsg.sender_id}`, `💬 ข้อความใหม่จาก ${newMsg.sender_name}`, cleanText, { type: 'dm', targetUser: { id: newMsg.sender_id, name: newMsg.sender_name, avatar: realAvatar } });
+          showToast(`dm-${newMsg.sender_id}`, `💬 ข้อความใหม่จาก ${newMsg.sender_name}`, cleanText, { type: 'dm', messageId: newMsg.id, targetUser: { id: newMsg.sender_id, name: newMsg.sender_name, avatar: realAvatar } });
         }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'direct_messages' }, () => {
@@ -3183,6 +3190,15 @@ export default function App() {
   };
 
   const dismissToastNotification = () => {
+    if (toastNotification?.messageId) {
+      dismissedToastMessageIdsRef.current.add(String(toastNotification.messageId));
+      if (user?.id) {
+        localStorage.setItem(
+          `study_buddy_dismissed_dm_toast_ids_${user.id}`,
+          JSON.stringify(Array.from(dismissedToastMessageIdsRef.current))
+        );
+      }
+    }
     if (toastNotification?.type === 'dm' && toastNotification?.targetUser?.id) {
       const senderId = toastNotification.targetUser.id;
       markNotificationRead(`dm-${senderId}`);
