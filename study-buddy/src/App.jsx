@@ -254,6 +254,7 @@ export default function App() {
   const currentTabRef = useRef('home');
   const selectedGroupRef = useRef(null);
   const actionToastTimerRef = useRef(null);
+  const toastNotificationTimerRef = useRef(null);
   const avatarFileInputRef = useRef(null);
 
   useEffect(() => {
@@ -299,6 +300,7 @@ export default function App() {
 
   useEffect(() => () => {
     if (actionToastTimerRef.current) window.clearTimeout(actionToastTimerRef.current);
+    if (toastNotificationTimerRef.current) window.clearTimeout(toastNotificationTimerRef.current);
   }, []);
 
   // 🔔 WEB AUDIO SYNTHESIZER: เสียงกระดิ่งแจ้งเตือนนุ่มๆ (Notification Chime)
@@ -957,7 +959,11 @@ export default function App() {
       return;
     }
     playNotificationSound();
+    if (toastNotificationTimerRef.current) window.clearTimeout(toastNotificationTimerRef.current);
     setToastNotification({ title, message, ownerUserId: user?.id || null, ...notificationMeta });
+    toastNotificationTimerRef.current = window.setTimeout(() => {
+      setToastNotification(null);
+    }, 3000);
     setHasUnreadNotification(true);
     setNotifications(prev => {
       const existingIndex = prev.findIndex(n => n.senderKey === senderKey);
@@ -3194,6 +3200,10 @@ export default function App() {
   };
 
   const dismissToastNotification = () => {
+    if (toastNotificationTimerRef.current) {
+      window.clearTimeout(toastNotificationTimerRef.current);
+      toastNotificationTimerRef.current = null;
+    }
     if (toastNotification?.messageId) {
       dismissedToastMessageIdsRef.current.add(String(toastNotification.messageId));
       if (user?.id) {
@@ -3202,20 +3212,6 @@ export default function App() {
           JSON.stringify(Array.from(dismissedToastMessageIdsRef.current))
         );
       }
-    }
-    if (toastNotification?.type === 'dm' && toastNotification?.targetUser?.id) {
-      const senderId = toastNotification.targetUser.id;
-      setNotifications(prev => prev.filter(n =>
-        !(n.type === 'dm' && String(n.targetUser?.id) === String(senderId))
-      ));
-      setRecentDMMessages(prev => ({
-        ...prev,
-        [senderId]: prev[senderId] ? { ...prev[senderId], unread: false } : prev[senderId]
-      }));
-      friendSyncChannelRef.current?.postMessage({
-        type: 'notification_read',
-        directMessageId: senderId
-      });
     }
     setToastNotification(null);
   };
