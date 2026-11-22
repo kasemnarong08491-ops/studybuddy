@@ -1331,7 +1331,6 @@ export default function App() {
           setHasUnreadNotification(updated.some(item => !item.read));
           return updated;
         });
-        setToastNotification(null);
       }
 
       if (payload.type === 'notification_read') {
@@ -1369,6 +1368,14 @@ export default function App() {
           return updated;
         });
         if (payload.groupId) setToastNotification(null);
+        if (payload.directMessageId) {
+          setToastNotification(current =>
+            current?.targetUser?.id &&
+            String(current.targetUser.id) === String(payload.directMessageId)
+              ? null
+              : current
+          );
+        }
       }
 
       if (payload.type === 'group_join_request') {
@@ -1560,7 +1567,6 @@ export default function App() {
 
     return () => {
       channel.close();
-      friendSyncChannelRef.current = null;
     };
   }, [user?.id, currentTab, activePrivateMember]);
 
