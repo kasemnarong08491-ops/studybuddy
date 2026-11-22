@@ -3182,6 +3182,25 @@ export default function App() {
     setCurrentTab('private_chat');
   };
 
+  const dismissToastNotification = () => {
+    if (toastNotification?.type === 'dm' && toastNotification?.targetUser?.id) {
+      const senderId = toastNotification.targetUser.id;
+      markNotificationRead(`dm-${senderId}`);
+      setNotifications(prev => prev.filter(n =>
+        !(n.type === 'dm' && String(n.targetUser?.id) === String(senderId))
+      ));
+      setRecentDMMessages(prev => ({
+        ...prev,
+        [senderId]: prev[senderId] ? { ...prev[senderId], unread: false } : prev[senderId]
+      }));
+      friendSyncChannelRef.current?.postMessage({
+        type: 'notification_read',
+        directMessageId: senderId
+      });
+    }
+    setToastNotification(null);
+  };
+
   const filteredGroups = studyGroups.filter(g => {
     const matchSearch = searchTerm === '' || g.title?.toLowerCase().includes(searchTerm.toLowerCase()) || g.subject?.toLowerCase().includes(searchTerm.toLowerCase());
     return matchSearch && (activeCategory === 'ทั้งหมด' || g.category === activeCategory);
@@ -3321,7 +3340,7 @@ export default function App() {
                 <h4 className="text-xs font-bold text-indigo-300 flex items-center gap-1">{toastNotification.title}</h4>
                 <p className="text-[11px] text-slate-200 leading-snug line-clamp-2">{toastNotification.message}</p>
               </div>
-              <button onClick={(e) => { e.stopPropagation(); setToastNotification(null); }} className="p-1 text-slate-400 hover:text-white shrink-0"><X className="w-4 h-4" /></button>
+              <button onClick={(e) => { e.stopPropagation(); dismissToastNotification(); }} className="p-1 text-slate-400 hover:text-white shrink-0"><X className="w-4 h-4" /></button>
             </div>
             {toastNotification.type === 'join_request' && !toastNotification.isHandled && (
               <div className="flex gap-2 pt-1 border-t border-slate-700/60" onClick={(e) => e.stopPropagation()}>
