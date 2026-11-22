@@ -414,7 +414,9 @@ export default function App() {
   const markNotificationRead = (senderKey, extraKeys = []) => {
     if (!senderKey && (!extraKeys || extraKeys.length === 0)) return;
     const keys = [senderKey, ...extraKeys].filter(Boolean).map(String);
-    keys.forEach(key => readNotificationKeysRef.current.add(key));
+    keys.filter(key => !key.startsWith('dm-')).forEach(key =>
+      readNotificationKeysRef.current.add(key)
+    );
     if (user?.id) {
       localStorage.setItem(
         `study_buddy_read_notification_keys_${user.id}`,
@@ -943,7 +945,8 @@ export default function App() {
   }, [user?.id, user?.email, studyGroups]);
 
   const showToast = (senderKey, title, message, notificationMeta = {}) => {
-    const isAlreadyRead = readNotificationKeysRef.current.has(String(senderKey));
+    const isAlreadyRead = !String(senderKey).startsWith('dm-')
+      && readNotificationKeysRef.current.has(String(senderKey));
     const isDismissed = notificationMeta.messageId
       && dismissedToastMessageIdsRef.current.has(String(notificationMeta.messageId));
     if (isAlreadyRead || isDismissed) {
@@ -1151,10 +1154,8 @@ export default function App() {
       latestByPartner.forEach((last, pid) => {
         const isFromMe = String(last.sender_id) === String(user.id);
         const cleanText = last.text?.startsWith('[IMAGE]:') ? '[รูปภาพ]' : (last.text || '');
-        const dmKey = `dm-${pid}`;
         const isAlreadyRead = readMessageIdsRef.current.has(last.id)
-          || isFromMe
-          || readNotificationKeysRef.current.has(dmKey);
+          || isFromMe;
         next[pid] = {
           text: isFromMe ? `คุณ: ${cleanText}` : cleanText,
           time: formatTime(last.created_at),
@@ -1173,8 +1174,7 @@ export default function App() {
         const cleanText = last.text?.startsWith('[IMAGE]:') ? '[รูปภาพ]' : (last.text || '');
         const senderKey = `dm-${pid}`;
         const isAlreadyRead = readMessageIdsRef.current.has(last.id)
-          || isFromMe
-          || readNotificationKeysRef.current.has(senderKey);
+          || isFromMe;
         const friendDisplayName = cleanProfileName(profile?.display_name || profile?.email?.split('@')[0] || 'ผู้ใช้');
         if (!isAlreadyRead) {
           if (!updated.some(n => n.senderKey === senderKey && !n.read)) {
@@ -1337,7 +1337,9 @@ export default function App() {
           const updated = prev.map(item =>
             item.type === 'join_request' && !item.isHandled
               ? item
-              : { ...item, read: true }
+              : item.type === 'dm'
+                ? item
+                : { ...item, read: true }
           );
           setHasUnreadNotification(updated.some(item => !item.read));
           return updated;
@@ -2738,7 +2740,9 @@ export default function App() {
           : { ...item, read: true }
       );
       updated.forEach(item => {
-        if (item.senderKey) readNotificationKeysRef.current.add(String(item.senderKey));
+        if (item.senderKey && item.type !== 'dm') {
+          readNotificationKeysRef.current.add(String(item.senderKey));
+        }
       });
       if (user?.id) {
         localStorage.setItem(
@@ -3201,7 +3205,6 @@ export default function App() {
     }
     if (toastNotification?.type === 'dm' && toastNotification?.targetUser?.id) {
       const senderId = toastNotification.targetUser.id;
-      markNotificationRead(`dm-${senderId}`);
       setNotifications(prev => prev.filter(n =>
         !(n.type === 'dm' && String(n.targetUser?.id) === String(senderId))
       ));
