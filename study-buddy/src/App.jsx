@@ -908,8 +908,11 @@ export default function App() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setNotifications(parsed);
-          const hasUnread = parsed.some(n => !n.read);
+          const ownedNotifications = parsed
+            .filter(n => !n.ownerUserId || String(n.ownerUserId) === String(user.id))
+            .map(n => ({ ...n, ownerUserId: n.ownerUserId || user.id }));
+          setNotifications(ownedNotifications);
+          const hasUnread = ownedNotifications.some(n => !n.read);
           setHasUnreadNotification(hasUnread);
         }
       }
@@ -944,7 +947,7 @@ export default function App() {
       return;
     }
     playNotificationSound();
-    setToastNotification({ title, message, ...notificationMeta });
+    setToastNotification({ title, message, ownerUserId: user?.id || null, ...notificationMeta });
     setHasUnreadNotification(true);
     setNotifications(prev => {
       const existingIndex = prev.findIndex(n => n.senderKey === senderKey);
@@ -965,6 +968,7 @@ export default function App() {
           desc: message,
           time: 'เมื่อสักครู่',
           read: false,
+          ownerUserId: user?.id || null,
           ...notificationMeta
         }, ...prev];
       }
@@ -3310,7 +3314,7 @@ export default function App() {
         )}
 
         {/* REALTIME NOTIFICATION */}
-        {toastNotification && (
+        {toastNotification && (!toastNotification.ownerUserId || String(toastNotification.ownerUserId) === String(user?.id)) && (
           <div onClick={() => { handleNotificationClick(toastNotification); setToastNotification(null); }} className="absolute top-12 left-4 right-4 bg-slate-900/95 text-white p-3.5 rounded-2xl shadow-2xl backdrop-blur-md border border-indigo-500/40 z-50 flex flex-col gap-2 cursor-pointer">
             <div className="flex justify-between items-start">
               <div className="space-y-0.5 flex-1 pr-2">
@@ -3337,8 +3341,8 @@ export default function App() {
                 <button onClick={() => setShowNotificationModal(false)} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
               </div>
               <div className="flex-1 overflow-y-auto overscroll-contain space-y-2 no-scrollbar text-xs">
-                {notifications.length === 0 ? <p className="text-center text-slate-400 text-[10px] py-4">ไม่มีการแจ้งเตือนใหม่</p> :
-                  notifications.map((n) => (
+                {notifications.filter(n => !n.ownerUserId || String(n.ownerUserId) === String(user?.id)).length === 0 ? <p className="text-center text-slate-400 text-[10px] py-4">ไม่มีการแจ้งเตือนใหม่</p> :
+                  notifications.filter(n => !n.ownerUserId || String(n.ownerUserId) === String(user?.id)).map((n) => (
                     <div key={n.id} className={`border p-3 rounded-2xl space-y-1.5 ${n.isHandled || n.read ? 'bg-slate-50 border-slate-100 opacity-70' : 'bg-indigo-50/40 border-indigo-200'}`}>
                       <div className="flex justify-between items-center" onClick={() => handleNotificationClick(n)}>
                         <span className="font-bold text-indigo-900 text-xs flex items-center gap-1">{n.title} {!n.isHandled && !n.read && <span className="w-2 h-2 bg-rose-500 rounded-full inline-block"></span>}</span>
